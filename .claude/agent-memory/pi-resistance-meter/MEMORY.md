@@ -7,10 +7,11 @@
 
 ## Architecture Decisions
 
-### snap_to_e24: two separate implementations exist
-- `measurement.py` has a module-level `snap_to_e24(ohms)` using **log-ratio** (nearest match)
-- `color_code.py` has its own `snap_to_e24` that rounds **up** (safety margin), importing from `resistor_constants`
-- These are intentionally different and must not be merged; each serves its own caller
+### snap_to_e24: one canonical implementation, exported from both files
+- `measurement.py` has the original module-level `snap_to_e24(ohms)` using **log-ratio** (nearest match)
+- `color_code.py` now has its own identical log-ratio `snap_to_e24` (same algorithm, same table)
+- Both are importable independently; no cross-import between these two files (avoids circular deps)
+- The old `color_code.py` version that rounded **up** via `resistor_constants` has been replaced
 
 ### Hardware imports are deferred into __init__
 - `board`, `busio`, `adafruit_ads1x15` are imported inside `ResistanceMeter.__init__`
@@ -45,6 +46,20 @@ R_unknown = R_known × Vmid / (Vin - Vmid)
 - snap_to_e24(0) → 1.0,  snap_to_e24(-5) → 1.0,  snap_to_e24(15e6) → 10e6
 - format_value(10000000) → "10MΩ"
 - Voltage-divider formula is algebraically exact in floating point for round-trip test
+
+### color_code.py resistance_to_bands verified vectors
+- 4700   → Yellow(4)-Violet(7)-Red(2)-Gold
+- 330    → Orange(3)-Orange(3)-Brown(1)-Gold
+- 10000  → Brown(1)-Black(0)-Orange(3)-Gold
+- 100    → Brown(1)-Black(0)-Brown(1)-Gold
+- 1000000→ Brown(1)-Black(0)-Green(5)-Gold
+
+### color_code.py band encoding notes
+- mantissa = ohms / 10^(exponent-1), not /10^exponent; gives 2-digit value in [10,100)
+- multiplier = exponent - 1 (trailing zeros), clamped 0–8
+- Band 4 dict has key 'tolerance' (float fraction, e.g. 0.05), not 'digit'
+- bands_to_description reconstructs ohms as (d1*10+d2)*10^multiplier then calls _format_value
+- _format_value is a private copy of measurement.py's format_value; no cross-import needed
 
 ## Links
 - See `debugging.md` for any future I2C / ADC reliability notes
