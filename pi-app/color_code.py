@@ -1,120 +1,239 @@
+from __future__ import annotations
+
 """
 Resistor Station - Resistance to Color Band Conversion
-Maps a resistance value to standard 4-band resistor color codes.
+
+Maps a resistance value to standard 4-band resistor color codes (E24 series).
+All public functions return structured dicts so callers do not need to keep
+their own color look-up tables.
+
+Exports:
+    snap_to_e24          – nearest E24 value by log-ratio distance
+    resistance_to_bands  – resistance → list of 4 band dicts
+    bands_to_description – band list → human-readable string
 """
 
 import math
-import sys
-import os
 
-# Allow running standalone or from within the pi-app directory
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "shared"))
+# ---------------------------------------------------------------------------
+# Module-level constants
+# ---------------------------------------------------------------------------
 
-from resistor_constants import E24_VALUES, COLOR_BANDS
-
-# Ordered list of color names by digit value (index == digit)
-_DIGIT_COLORS = [
-    "black",   # 0
-    "brown",   # 1
-    "red",     # 2
-    "orange",  # 3
-    "yellow",  # 4
-    "green",   # 5
-    "blue",    # 6
-    "violet",  # 7
-    "grey",    # 8
-    "white",   # 9
-]
-
-# Multiplier band: exponent -> color name
-_MULTIPLIER_COLORS = {
-    -2: "silver",   # x0.01
-    -1: "gold",     # x0.1
-     0: "black",    # x1
-     1: "brown",    # x10
-     2: "red",      # x100
-     3: "orange",   # x1000
-     4: "yellow",   # x10000
-     5: "green",    # x100000
-     6: "blue",     # x1000000
+# Significant-digit and multiplier band colors (index == digit value).
+BAND_COLORS: dict[int, dict] = {
+    0: {"name": "Black",  "rgb": (0,   0,   0  )},
+    1: {"name": "Brown",  "rgb": (139, 69,  19 )},
+    2: {"name": "Red",    "rgb": (255, 0,   0  )},
+    3: {"name": "Orange", "rgb": (255, 140, 0  )},
+    4: {"name": "Yellow", "rgb": (255, 255, 0  )},
+    5: {"name": "Green",  "rgb": (0,   200, 0  )},
+    6: {"name": "Blue",   "rgb": (0,   0,   255)},
+    7: {"name": "Violet", "rgb": (139, 0,   255)},
+    8: {"name": "Gray",   "rgb": (128, 128, 128)},
+    9: {"name": "White",  "rgb": (255, 255, 255)},
 }
 
+# Tolerance band colors (key == tolerance as a fraction, e.g. 0.05 = 5 %).
+TOLERANCE_BANDS: dict[float, dict] = {
+    0.05: {"name": "Gold",   "rgb": (255, 215, 0  )},
+    0.10: {"name": "Silver", "rgb": (192, 192, 192)},
+}
 
-def snap_to_e24(resistance: float) -> float:
-    """Return the smallest E24 standard value >= resistance.
+# E24 base mantissas for one decade (values in [1.0, 9.1]).
+_E24_BASE: list[float] = [
+    1.0, 1.1, 1.2, 1.3, 1.5, 1.6, 1.8, 2.0,
+    2.2, 2.4, 2.7, 3.0, 3.3, 3.6, 3.9, 4.3,
+    4.7, 5.1, 5.6, 6.2, 6.8, 7.5, 8.2, 9.1,
+]
 
-    Rounds UP to the next E24 value for safety (never under-specifies).
-    Handles the full range from sub-ohm to multi-megaohm values.
+# Pre-computed full E24 table: 1 Ω (10^0) through 9.1 MΩ, capped at 10 MΩ.
+_E24_TABLE: list[float] = []
+for _exp in range(7):          # exponents 0..6  →  decades 1, 10, …, 1 000 000
+    _decade = 10 ** _exp
+    for _base in _E24_BASE:
+        _E24_TABLE.append(round(_base * _decade, 10))
+_E24_TABLE.append(10_000_000.0)  # explicit 10 MΩ sentinel / cap
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _format_value(ohms: float) -> str:
+    """Format *ohms* as a compact SI string (Ω / kΩ / MΩ), stripping '.0'."""
+    if ohms >= 1_000_000:
+        scaled, unit = ohms / 1_000_000, "MΩ"
+    elif ohms >= 1_000:
+        scaled, unit = ohms / 1_000, "kΩ"
+    else:
+        scaled, unit = ohms, "Ω"
+
+    formatted = f"{scaled:.1f}"
+    if formatted.endswith(".0"):
+        formatted = formatted[:-2]
+    return f"{formatted}{unit}"
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def snap_to_e24(ohms: float) -> float:
+    """Return the nearest E24 standard resistance for *ohms* using log-ratio distance.
+
+    Uses logarithmic (ratio-based) distance so that matching is proportionally
+    correct across all decades.  Range is 1 Ω – 10 MΩ.
+
+    Edge cases:
+        ohms <= 0         → 1.0
+        ohms > 10_000_000 → 10_000_000.0
     """
-    if resistance <= 0:
-        return E24_VALUES[0]  # 1.0 Ohm minimum
+    if ohms <= 0:
+        return 1.0
+    if ohms > 10_000_000.0:
+        return 10_000_000.0
 
-    # Find the decade exponent so we can normalise to 1..10
-    exponent = math.floor(math.log10(resistance))
-    decade = 10 ** exponent
-    normalised = resistance / decade  # value in [1.0, 10.0)
+    best_value = _E24_TABLE[0]
+    best_log_dist = abs(math.log(ohms / _E24_TABLE[0]))
 
-    # Find the first E24 mantissa that is >= normalised value
-    for e24 in E24_VALUES:
-        candidate = e24 * decade
-        # Use a small epsilon to handle floating-point imprecision when the
-        # input is already exactly an E24 value.
-        if candidate >= resistance - 1e-9:
-            return candidate
+    for candidate in _E24_TABLE[1:]:
+        log_dist = abs(math.log(ohms / candidate))
+        if log_dist < best_log_dist:
+            best_log_dist = log_dist
+            best_value = candidate
 
-    # If we exhausted this decade, step up to the next one
-    return E24_VALUES[0] * decade * 10
+    return best_value
 
 
-def resistance_to_bands(resistance: float) -> list:
-    """Convert a resistance value to a list of four color name strings.
+def resistance_to_bands(ohms: float, tolerance: float = 0.05) -> list[dict]:
+    """Convert *ohms* to a list of 4 band dicts (digit, name, rgb / tolerance).
 
-    Returns [digit1, digit2, multiplier, tolerance] where tolerance is always
-    'gold' (±5%).  Assumes resistance is a positive E24 value.
+    Snaps to the nearest E24 value first, so digit values are always clean.
+
+    Band layout:
+        [0] First significant digit
+        [1] Second significant digit
+        [2] Multiplier  (number of trailing zeros, 0–8)
+        [3] Tolerance   (Gold = 5 %, Silver = 10 %)
+
+    Each of bands 0–2 is:  {'digit': int, 'name': str, 'rgb': tuple}
+    Band 3 is:             {'name': str, 'rgb': tuple, 'tolerance': float}
     """
-    if resistance <= 0:
-        return ["black", "black", "black", "gold"]
+    # --- edge-case clamping -------------------------------------------------
+    if ohms <= 0:
+        ohms = 1.0
+    elif ohms > 10_000_000:
+        ohms = 10_000_000.0
 
-    # Find the decade that gives us a two-digit mantissa in [10, 99]
-    # e.g. 4700 -> mantissa=47, exponent=2 (multiplier=100)
-    exponent = math.floor(math.log10(resistance)) - 1
-    decade = 10 ** exponent
-    mantissa = round(resistance / decade)  # should be in [10..99]
+    # Snap to E24 so digits are always a clean pair from the series.
+    ohms = snap_to_e24(ohms)
 
-    # Handle edge cases where rounding pushes mantissa to 100
-    if mantissa >= 100:
-        mantissa = mantissa // 10
-        exponent += 1
-        decade = 10 ** exponent
+    # --- significant digits -------------------------------------------------
+    # exponent such that 10^(exponent-1) <= ohms < 10^exponent.
+    # mantissa = ohms / 10^(exponent-1)  is a 2-digit number in [10, 100).
+    exponent = math.floor(math.log10(ohms))
+    mantissa = ohms / (10 ** (exponent - 1))  # in [10.0, 100.0)
 
-    digit1 = mantissa // 10
-    digit2 = mantissa % 10
+    digit1 = int(mantissa) // 10
+    digit2 = int(mantissa) % 10
 
-    # Clamp digits to valid range
+    # Clamp to valid digit range (defensive; E24 values never need this).
     digit1 = max(0, min(9, digit1))
     digit2 = max(0, min(9, digit2))
 
-    multiplier_color = _MULTIPLIER_COLORS.get(exponent, "black")
+    # --- multiplier ---------------------------------------------------------
+    # multiplier = number of trailing zeros = exponent - 1.
+    multiplier = exponent - 1
+    multiplier = max(0, min(8, multiplier))  # valid range for a 4-band code
+
+    # --- tolerance ----------------------------------------------------------
+    tol_info = TOLERANCE_BANDS.get(tolerance, TOLERANCE_BANDS[0.05])
+
+    # --- assemble bands -----------------------------------------------------
+    def _digit_band(digit: int) -> dict:
+        return {
+            "digit": digit,
+            "name":  BAND_COLORS[digit]["name"],
+            "rgb":   BAND_COLORS[digit]["rgb"],
+        }
+
+    band_multiplier: dict = {
+        "digit": multiplier,
+        "name":  BAND_COLORS[multiplier]["name"],
+        "rgb":   BAND_COLORS[multiplier]["rgb"],
+    }
+
+    band_tolerance: dict = {
+        "name":      tol_info["name"],
+        "rgb":       tol_info["rgb"],
+        "tolerance": tolerance if tolerance in TOLERANCE_BANDS else 0.05,
+    }
 
     return [
-        _DIGIT_COLORS[digit1],
-        _DIGIT_COLORS[digit2],
-        multiplier_color,
-        "gold",  # ±5% tolerance
+        _digit_band(digit1),
+        _digit_band(digit2),
+        band_multiplier,
+        band_tolerance,
     ]
 
 
-def bands_to_rgb(bands: list) -> list:
-    """Map a list of color name strings to RGB tuples.
+def bands_to_description(bands: list[dict]) -> str:
+    """Return a human-readable description of *bands*, e.g. 'Yellow-Violet-Red-Gold (4.7kΩ ±5%)'.
 
-    Returns a list of (R, G, B) tuples, one per band.
-    Unknown color names map to (128, 128, 128) gray.
+    Reconstructs the resistance from digit and multiplier bands, then formats
+    it with SI prefix (Ω / kΩ / MΩ).
     """
-    result = []
-    for name in bands:
-        entry = COLOR_BANDS.get(name)
-        if entry is not None:
-            result.append(entry[1])
-        else:
-            result.append((128, 128, 128))
-    return result
+    name_str = "-".join(b["name"] for b in bands)
+
+    # Reconstruct ohms from the digit and multiplier bands.
+    digit1     = bands[0]["digit"]
+    digit2     = bands[1]["digit"]
+    multiplier = bands[2]["digit"]
+    ohms       = (digit1 * 10 + digit2) * (10 ** multiplier)
+
+    value_str = _format_value(float(ohms))
+
+    tol_pct = int(bands[3]["tolerance"] * 100)
+
+    return f"{name_str} ({value_str} \u00b1{tol_pct}%)"
+
+
+# ---------------------------------------------------------------------------
+# Self-test (run with: python color_code.py)
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    cases = [
+        (4700,   "Yellow-Violet-Red-Gold"),
+        (330,    "Orange-Orange-Brown-Gold"),
+        (10000,  "Brown-Black-Orange-Gold"),
+        (100,    "Brown-Black-Brown-Gold"),
+    ]
+
+    all_pass = True
+    for ohms, expected_bands in cases:
+        bands = resistance_to_bands(ohms)
+        band_names = "-".join(b["name"] for b in bands)
+        desc = bands_to_description(bands)
+        status = "PASS" if band_names == expected_bands else "FAIL"
+        if status == "FAIL":
+            all_pass = False
+        print(f"{status}  {ohms:>10,}Ω  got={band_names!r:<40}  expected={expected_bands!r}")
+        print(f"       description: {desc}")
+
+    # Extra verification cases
+    extra = [
+        (1_000_000, "Brown-Black-Green-Gold"),
+    ]
+    for ohms, expected_bands in extra:
+        bands = resistance_to_bands(ohms)
+        band_names = "-".join(b["name"] for b in bands)
+        desc = bands_to_description(bands)
+        status = "PASS" if band_names == expected_bands else "FAIL"
+        if status == "FAIL":
+            all_pass = False
+        print(f"{status}  {ohms:>10,}Ω  got={band_names!r:<40}  expected={expected_bands!r}")
+        print(f"       description: {desc}")
+
+    print()
+    print("All tests passed." if all_pass else "SOME TESTS FAILED.")
