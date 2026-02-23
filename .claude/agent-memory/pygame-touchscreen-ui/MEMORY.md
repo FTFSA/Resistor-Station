@@ -12,8 +12,14 @@
 
 ## Architecture Decisions
 - UIManager stores screens in `self._screens` dict, active key in `self._active` (str or None)
-- switch_to() raises KeyError for unknown names
+- switch_to() raises KeyError for unknown names; switch_screen() is an alias
 - draw()/update()/handle_event() are no-ops when self._active is None (never crash)
+- UIManager has dual-mode construction:
+  - `UIManager()` — hardware mode: calls pygame.init(), fullscreen display, clock
+  - `UIManager(surface)` — test mode: calls pygame.font.init() ONLY, uses supplied surface
+  - Test mode skips draw_nav_bar() and display.flip() to avoid pygame.draw on MagicMock
+- draw() in hardware mode calls screen.draw(self._surface), draws nav bar, flips display
+- draw() in test mode calls screen.draw(self._surface) only (no nav, no flip)
 - ScreenLiveLab.update() calls meter.read() then serial.send_measurement(resistance, bands)
   - resistance is FIRST positional arg to send_measurement (test checks args[0][0])
 - screen_calculator.py imports snap_to_e24 and resistance_to_bands at MODULE LEVEL
@@ -22,11 +28,35 @@
   - K_BACKSPACE arrives with unicode="" — key check must come first
   - Only event.unicode.isdigit() chars are appended (non-digits silently ignored)
 
+## UIManager Layout Constants (ui_manager.py)
+- SCREEN_W=480, SCREEN_H=320, NAV_H=48, CONTENT_H=272
+- CONTENT_AREA = pygame.Rect(0, 0, 480, 272)
+- NAV_BAR_AREA = pygame.Rect(0, 272, 480, 48)
+- Nav: 3 buttons x 160px (_NAV_BTN_W = SCREEN_W//3), y starts at SCREEN_H - NAV_H = 272
+- _nav_rects built in draw_nav_bar(); initialized to [] in __init__ so _nav_hit never crashes
+
+## UIManager Colour Constants (ui_manager.py)
+- BG_COLOR=(15,23,42), TEXT_COLOR=(226,232,240), ACCENT=(56,189,248)
+- GREEN=(52,211,153), ORANGE=(251,146,60), YELLOW=(251,191,36), RED=(248,113,113)
+- NAV_BG=(8,15,30), NAV_BORDER=(30,41,59), RESISTOR_TAN=(210,180,140)
+
+## Font Loading Pattern (CRITICAL)
+- In test mode: call pygame.font.init() before SysFont — font subsystem needs init without display
+- pygame.font.SysFont() raises pygame.error "font not initialized" if subsystem not init'd
+- SysFont can return None in some dummy SDL environments — check and raise RuntimeError
+- Fall back to SysFont(None, size) if named family fails
+
+## draw_resistor() in ui_manager.py
+- `draw_resistor(surface, x, y, w, h, bands)` — bands is list of dicts with 'rgb' key
+- Lead width = w*0.15 each side; body_x = x + w*0.15; body_w = w*0.70
+- 4 band centres at 20%, 40%, 60%, 80% of body_w from body_x
+- Band width = w*0.06; clips to body rect to avoid corner overdraw
+- Re-draws body outline (width=2) after bands to crisp up rounded corners
+
 ## color_code.py Implementation Notes
-- snap_to_e24() rounds UP to next E24 value for safety (uses 1e-9 epsilon for float equality)
-- resistance_to_bands() returns [digit1, digit2, multiplier, 'gold'] — always gold tolerance
-- Multiplier exponent = floor(log10(resistance)) - 1, giving a 2-digit mantissa [10..99]
-- _MULTIPLIER_COLORS dict maps exponent -> color name (silver=-2, gold=-1, black=0, brown=1, ...)
+- snap_to_e24() uses log-ratio distance — nearest match, not always rounding up
+- resistance_to_bands() returns [digit1, digit2, multiplier, tolerance] dicts
+- Each band dict has 'digit', 'name', 'rgb' keys; tolerance dict has 'tolerance' float
 - Path to shared/: inserted via sys.path in color_code.py using __file__ relative navigation
 
 ## Test Environment
@@ -36,9 +66,9 @@
 - Tests import from pi-app/ directly (sys.path set in conftest.py)
 
 ## Screen Interface Contract
-Every screen must implement: __init__, update(dt), draw(), handle_event(event)
+Every screen must implement: __init__, update(dt), draw(surface), handle_event(event)
 Optional: on_enter(), on_exit()
-draw() must call surface.fill(), surface.blit(), or pygame.draw.* (test checks this)
+draw() receives surface as argument; must call surface.fill(), surface.blit(), or pygame.draw.*
 
 ## demo.py — Standalone Preview
 - File: `pi-app/demo.py` — self-contained, no hardware imports
