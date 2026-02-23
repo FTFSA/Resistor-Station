@@ -2,8 +2,26 @@
 Portal M4 - HUB75 32x64 LED Matrix Display Driver
 
 Module-level init runs on import. Callers must not re-init hardware.
-Exposes a flat pixel API (set_pixel, fill_rect, clear, refresh) plus
-draw_circuit_layout() for the one-time static background paint.
+Exposes a flat pixel API (set_pixel, fill_rect, clear, refresh).
+
+Palette layout (50 entries, bit_depth=3):
+  0        : black (background)
+  1-10     : electron blue, dim→bright
+  11-20    : heated electron orange/red, dim→bright
+  21       : resistor body base (cool dark green)
+  22       : resistor body warmer
+  23       : resistor edge
+  24       : resistor cap
+  25       : lead/terminal
+  26-30    : resistor heat glow (increasing warmth)
+  31-35    : heat particles (bright→dim)
+  36       : wire base (dark blue-grey)
+  37       : polarity marker (dim white-grey)
+  38       : trail dim blue
+  39       : trail dim orange
+  40       : flow indicator (very dim blue)
+  41-45    : blended electron colors (blue→orange transition)
+  46-49    : spare black
 """
 
 import board
@@ -20,7 +38,7 @@ displayio.release_displays()
 mx = rgbmatrix.RGBMatrix(
     width=64,
     height=32,
-    bit_depth=4,
+    bit_depth=3,
     rgb_pins=[
         board.MTX_R1, board.MTX_G1, board.MTX_B1,
         board.MTX_R2, board.MTX_G2, board.MTX_B2,
@@ -37,48 +55,135 @@ mx = rgbmatrix.RGBMatrix(
 display = framebufferio.FramebufferDisplay(mx, auto_refresh=False)
 
 # ---------------------------------------------------------------------------
-# Palette — 16 entries, fixed at module level
+# Palette — 50 entries, fixed at module level
+# Indices match current_animation.py exactly; do not reorder.
 # ---------------------------------------------------------------------------
 
-palette = displayio.Palette(16)
-palette[0]  = 0x000000   # black
-palette[1]  = 0xFFFFFF   # white
-palette[2]  = 0xDC0000   # red
-palette[3]  = 0x00C800   # green
-palette[4]  = 0x0000DC   # blue
-palette[5]  = 0xDCC800   # yellow
-palette[6]  = 0x00C8C8   # cyan
-palette[7]  = 0xDC7800   # orange
-palette[8]  = 0x005000   # dark_green
-palette[9]  = 0x3C3C3C   # dim_white
-palette[10] = 0x00FFFF   # bright_cyan
-palette[11] = 0xC80064   # pink
-palette[12] = 0x000000   # spare black
-palette[13] = 0x000000   # spare black
-palette[14] = 0x000000   # spare black
-palette[15] = 0x000000   # spare black
+NUM_COLORS = 50
+palette = displayio.Palette(NUM_COLORS)
 
+# 0: black
+palette[0] = 0x000000
+
+# 1-10: electron blue (dim to bright)
+# Each step: r=20*(i+1)/10, g=80*(i+1)/10, b=255*(i+1)/10
+palette[1]  = 0x020814   # 10%
+palette[2]  = 0x041028   # 20%
+palette[3]  = 0x06183D   # 30%
+palette[4]  = 0x082051   # 40%
+palette[5]  = 0x0A2866   # 50%
+palette[6]  = 0x0C307A   # 60%
+palette[7]  = 0x0E388E   # 70%
+palette[8]  = 0x1040A3   # 80%
+palette[9]  = 0x1248B7   # 90%
+palette[10] = 0x1450CC   # 100% (brightest blue electron)
+
+# 11-20: heated electron orange/red (dim to bright)
+# Each step: r=255*(i+1)/10, g=80*(i+1)/10, b=20*(i+1)/10
+palette[11] = 0x190802   # 10%
+palette[12] = 0x330F03   # 20%
+palette[13] = 0x4C1705   # 30%
+palette[14] = 0x661F06   # 40%
+palette[15] = 0x7F2808   # 50%
+palette[16] = 0x993009   # 60%
+palette[17] = 0xB2380B   # 70%
+palette[18] = 0xCC400C   # 80%
+palette[19] = 0xE6480E   # 90%
+palette[20] = 0xFF5014   # 100% (brightest orange electron)
+
+# 21: resistor body base
+palette[21] = 0x283720
+# 22: resistor body warmer
+palette[22] = 0x3A3520
+# 23: resistor edge
+palette[23] = 0x282A1C
+# 24: resistor cap
+palette[24] = 0x1E261A
+# 25: lead/terminal
+palette[25] = 0x2D2D32
+
+# 26-30: resistor heat glow (increasing warmth)
+# t=(i+1)/5: r=35+t*140, g=50-t*25, b=30-t*18
+palette[26] = 0x3B2F1C   # t=0.2
+palette[27] = 0x5A2A16   # t=0.4
+palette[28] = 0x792411   # t=0.6
+palette[29] = 0x981E0B   # t=0.8
+palette[30] = 0xB71906   # t=1.0
+
+# 31-35: heat particles (bright to dim)
+# bright=1-i*0.2: r=220*bright, g=60*bright, b=8*bright
+palette[31] = 0xDC3C08   # 100%
+palette[32] = 0xB03006   # 80%
+palette[33] = 0x832405   # 60%
+palette[34] = 0x571803   # 40%
+palette[35] = 0x2A0C02   # 20%
+
+# 36: wire base (dark blue-grey)
+palette[36] = 0x121920
+# 37: polarity marker (dim grey)
+palette[37] = 0x303030
+# 38: trail dim blue
+palette[38] = 0x0A1830
+# 39: trail dim orange
+palette[39] = 0x301008
+# 40: flow indicator (very dim blue)
+palette[40] = 0x0C2038
+
+# 41-45: blended electron transition (blue→orange)
+# t=i/4: r=40*(1-t)+255*t, g=120*(1-t)+80*t, b=220*(1-t)+25*t
+palette[41] = 0x2878DC   # t=0.0 (cool blue)
+palette[42] = 0x5B7AAA   # t=0.25
+palette[43] = 0x8E7C78   # t=0.5
+palette[44] = 0xC17E46   # t=0.75
+palette[45] = 0xFF5019   # t=1.0 (hot orange)
+
+# 46-49: spare black
+palette[46] = 0x000000
+palette[47] = 0x000000
+palette[48] = 0x000000
+palette[49] = 0x000000
+
+# ---------------------------------------------------------------------------
 # Convenience name → index mapping for callers
+# Maps legacy names to the closest palette entry.
+# ---------------------------------------------------------------------------
+
 COLOR = {
     'black':       0,
-    'white':       1,
-    'red':         2,
-    'green':       3,
-    'blue':        4,
-    'yellow':      5,
-    'cyan':        6,
-    'orange':      7,
-    'dark_green':  8,
-    'dim_white':   9,
+    'cyan':        10,   # brightest blue electron (was index 6)
+    'orange':      20,   # brightest heated electron (was index 7)
+    'wire':        36,   # wire base colour
+    'polarity':    37,   # polarity marker
+    'trail_blue':  38,
+    'trail_orange': 39,
+    'flow':        40,
+    'blend_cool':  41,
+    'blend_warm':  45,
+    'res_body':    21,
+    'res_edge':    23,
+    'res_cap':     24,
+    'res_lead':    25,
+    'heat_glow_1': 26,
+    'heat_glow_5': 30,
+    'heat_p_bright': 31,
+    'heat_p_dim':    35,
+    # Legacy names kept for tiny_font.py compatibility
+    'white':       37,   # closest available (dim grey used as white stand-in)
+    'red':         20,   # hot orange doubles as red
+    'green':       21,   # res_body green is closest
+    'blue':        10,   # brightest blue
+    'yellow':      45,   # warm blend
+    'dark_green':  21,
+    'dim_white':   37,
     'bright_cyan': 10,
-    'pink':        11,
+    'pink':        35,
 }
 
 # ---------------------------------------------------------------------------
 # Pixel buffer
 # ---------------------------------------------------------------------------
 
-bitmap = displayio.Bitmap(64, 32, 16)
+bitmap = displayio.Bitmap(64, 32, NUM_COLORS)
 
 # ---------------------------------------------------------------------------
 # Display group
@@ -117,136 +222,4 @@ def clear(color_index=0):
 
 def refresh():
     """Push the current bitmap to the matrix panel."""
-    display.refresh()
-
-
-# ---------------------------------------------------------------------------
-# Static circuit background
-# ---------------------------------------------------------------------------
-
-def draw_circuit_layout():
-    """Paint the static circuit diagram once; call refresh() when done."""
-
-    clear(COLOR['black'])
-
-    green  = COLOR['green']
-    yellow = COLOR['yellow']
-    white  = COLOR['white']
-    dim    = COLOR['dim_white']
-
-    # ------------------------------------------------------------------
-    # Wires
-    # ------------------------------------------------------------------
-
-    # Top horizontal wire  y=4, x=6..60
-    for x in range(6, 61):
-        set_pixel(x, 4, green)
-
-    # Bottom horizontal wire  y=27, x=6..60
-    for x in range(6, 61):
-        set_pixel(x, 27, green)
-
-    # Left vertical wire  x=2, y=4..27
-    for y in range(4, 28):
-        set_pixel(2, y, green)
-
-    # Right vertical wire  x=61, y=4..27
-    for y in range(4, 28):
-        set_pixel(61, y, green)
-
-    # Corner connectors — join the horizontals to the verticals
-    # Top-left corner: x=2..6, y=4
-    for x in range(2, 7):
-        set_pixel(x, 4, green)
-    # Top-right corner: x=60..62, y=4
-    for x in range(60, 62):
-        set_pixel(x, 4, green)
-    # Bottom-left corner: x=2..6, y=27
-    for x in range(2, 7):
-        set_pixel(x, 27, green)
-    # Bottom-right corner: x=60..62, y=27
-    for x in range(60, 62):
-        set_pixel(x, 27, green)
-
-    # ------------------------------------------------------------------
-    # Battery  (x=2–5, y=10–21)
-    # Represented as two vertical yellow plates and polarity markers.
-    # ------------------------------------------------------------------
-
-    # Left plate: x=3, y=12..20
-    for y in range(12, 21):
-        set_pixel(3, y, yellow)
-
-    # Right plate: x=5, y=12..20
-    for y in range(12, 21):
-        set_pixel(5, y, yellow)
-
-    # Short horizontal connectors top of plates
-    set_pixel(3, 12, yellow)
-    set_pixel(4, 12, yellow)
-    set_pixel(5, 12, yellow)
-
-    # Short horizontal connectors bottom of plates
-    set_pixel(3, 20, yellow)
-    set_pixel(4, 20, yellow)
-    set_pixel(5, 20, yellow)
-
-    # '+' terminal dot above  (x=4, y=10)
-    set_pixel(4, 10, white)
-
-    # '-' terminal dot below  (x=4, y=22)
-    set_pixel(4, 22, white)
-
-    # ------------------------------------------------------------------
-    # Resistor box  (x=47–57, y=1–7)
-    # White outline rectangle 11 wide × 7 tall.
-    # ------------------------------------------------------------------
-
-    # Top edge y=1, x=47..57
-    for x in range(47, 58):
-        set_pixel(x, 1, white)
-
-    # Bottom edge y=7, x=47..57
-    for x in range(47, 58):
-        set_pixel(x, 7, white)
-
-    # Left edge x=47, y=1..7
-    for y in range(1, 8):
-        set_pixel(47, y, white)
-
-    # Right edge x=57, y=1..7
-    for y in range(1, 8):
-        set_pixel(57, y, white)
-
-    # Interior zigzag: 3 diagonal pixels suggesting a resistor symbol
-    # Row 2 → col 49 (left-leaning)
-    set_pixel(49, 2, white)
-    # Row 3 → col 51 (right-leaning)
-    set_pixel(51, 3, white)
-    # Row 4 → col 53 (left-leaning)
-    set_pixel(53, 4, white)
-    # Row 5 → col 55 (right-leaning)
-    set_pixel(55, 5, white)
-
-    # Connector from top wire (y=4) down to resistor box top (y=1)
-    # The resistor sits straddling y=4; draw a short stub at x=52, y=1..4
-    for y in range(1, 5):
-        set_pixel(52, y, green)
-
-    # ------------------------------------------------------------------
-    # Current-direction arrow-dots on wires
-    # ------------------------------------------------------------------
-
-    # Top wire (y=4): dots at x=20 and x=35 (current flows left→right)
-    set_pixel(20, 4, dim)
-    set_pixel(35, 4, dim)
-
-    # Bottom wire (y=27): dots at x=35 and x=20 (current flows right→left)
-    set_pixel(35, 27, dim)
-    set_pixel(20, 27, dim)
-
-    # ------------------------------------------------------------------
-    # Done — push to panel
-    # ------------------------------------------------------------------
-
     display.refresh()
