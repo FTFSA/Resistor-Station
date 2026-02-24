@@ -52,10 +52,10 @@ HEIGHT = 32
 # Resistor geometry
 RES_X1 = 20   # resistor body left  (inclusive)
 RES_X2 = 43   # resistor body right (inclusive)
-RES_Y1 = 10   # resistor body top
-RES_Y2 = 21   # resistor body bottom
-WIRE_Y1 = 14  # wire top row
-WIRE_Y2 = 17  # wire bottom row
+RES_Y1 = 4    # resistor body top    (4px margin from edge)
+RES_Y2 = 27   # resistor body bottom (4px margin from edge)
+WIRE_Y1 = 13  # wire top row
+WIRE_Y2 = 18  # wire bottom row
 
 # Reduced counts for SAMD51 memory budget
 NUM_ELECTRONS     = 20
