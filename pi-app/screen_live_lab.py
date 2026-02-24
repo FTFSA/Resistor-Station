@@ -30,24 +30,24 @@ import pygame
 
 SCREEN_W    = 480
 SCREEN_H    = 320
-NAV_H       = 50          # nav bar height; content area ends at y=270
-CONTENT_H   = SCREEN_H - NAV_H   # 270 px
+NAV_H       = 48          # nav bar height; content area ends at y=272
+CONTENT_H   = SCREEN_H - NAV_H   # 272 px
 
 CONTENT_AREA = pygame.Rect(0, 0, SCREEN_W, CONTENT_H)
 
-# Top section: resistor illustration (y 0..144)
-TOP_H   = 145
-# Bottom section: data cards (y 150..265)
-CARD_Y  = 150
-CARD_H  = 95
+# Top section: resistor illustration (y 0..155)
+TOP_H   = 155
+# Bottom section: data cards (y 158..268)
+CARD_Y  = 158
+CARD_H  = 110
 CARD_W  = 140
 CARD_GAP = (SCREEN_W - 3 * CARD_W) // 4   # equal spacing left, between, right
 
 # Resistor illustration geometry (all relative to SCREEN_W)
 RES_CX   = SCREEN_W // 2      # horizontal centre
-RES_CY   = 58                  # vertical centre of resistor body
+RES_CY   = 68                  # vertical centre of resistor body
 RES_W    = 280                 # total bounding width including leads
-RES_H    = 54                  # body height
+RES_H    = 70                  # body height
 RES_X    = RES_CX - RES_W // 2
 RES_Y    = RES_CY - RES_H // 2
 
@@ -325,8 +325,8 @@ class ScreenLiveLab:
     def draw(self, surface: pygame.Surface | None = None) -> None:
         """Render the screen onto *surface* (or self._surface if None).
 
-        The content area is 480 × 270 px (y = 0 to 269).  The nav bar
-        occupies the bottom 50 px and is drawn by the UIManager, not here.
+        The content area is 480 × 272 px (y = 0 to 271).  The nav bar
+        occupies the bottom 48 px and is drawn by the UIManager, not here.
 
         Args:
             surface: Explicit target surface.  Defaults to self._surface.

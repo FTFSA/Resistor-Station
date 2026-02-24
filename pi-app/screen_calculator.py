@@ -3,7 +3,7 @@ Resistor Station - Resistor Calculator Screen
 
 Enter a target resistance; display the nearest E24 value and colour bands.
 
-Layout (480 × 320, content area 480 × 270 above the nav bar):
+Layout (480 × 320, content area 480 × 272 above the nav bar):
 
   LEFT PANEL  (x  10–220)  Input display, E24 result card, resistor illustration
   RIGHT PANEL (x 230–470)  3 × 5 on-screen keypad
@@ -29,8 +29,8 @@ from color_code import snap_to_e24, resistance_to_bands
 
 SCREEN_W  = 480
 SCREEN_H  = 320
-NAV_H     = 50    # content area ends at y = 270
-CONTENT_H = SCREEN_H - NAV_H   # 270 px
+NAV_H     = 48    # content area ends at y = 272
+CONTENT_H = SCREEN_H - NAV_H   # 272 px
 
 # Left panel: input + result + resistor illustration
 _LEFT_X  = 10
@@ -50,9 +50,9 @@ _RESULT_BOX_H   = 44
 
 # Resistor illustration
 _RES_AREA_Y   = 140
-_RES_AREA_H   = 60
+_RES_AREA_H   = 126
 _RES_W        = 200
-_RES_H        = 38
+_RES_H        = 60
 _RES_X        = _LEFT_X + (_LEFT_W - _RES_W) // 2
 _RES_Y        = _RES_AREA_Y + (_RES_AREA_H - _RES_H) // 2
 _BAND_LABEL_Y = _RES_Y + _RES_H + 4

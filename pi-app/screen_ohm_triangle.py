@@ -27,29 +27,29 @@ CONTENT_H  = SCREEN_H - NAV_H   # 272 px
 CONTENT_AREA = pygame.Rect(0, 0, SCREEN_W, CONTENT_H)
 
 # Triangle vertices (absolute pixel coordinates)
-TRI_APEX  = (122, 20)    # V — top
-TRI_LEFT  = (20,  210)   # I — bottom-left
-TRI_RIGHT = (224, 210)   # R — bottom-right
+TRI_APEX  = (122, 15)    # V — top
+TRI_LEFT  = (20,  250)   # I — bottom-left
+TRI_RIGHT = (224, 250)   # R — bottom-right
 
 # Midpoint y of dividing line inside the triangle (separates V zone from I/R)
-_TRI_MID_Y = (TRI_APEX[1] + TRI_LEFT[1]) // 2   # ≈ 115
+_TRI_MID_Y = (TRI_APEX[1] + TRI_LEFT[1]) // 2   # ≈ 132
 
 # Zone label centres
-_V_LABEL = (122, 78)
-_I_LABEL = (62,  168)
-_R_LABEL = (182, 168)
+_V_LABEL = (122, 88)
+_I_LABEL = (62,  205)
+_R_LABEL = (182, 205)
 
 # Right-panel geometry
 _RPANEL_X  = 250
 _RPANEL_W  = 220   # 250..470
 _CARD_Y    = 10
-_CARD_H    = 120
-_LIVE_Y    = 133
-_SLIDER_Y  = 155
+_CARD_H    = 130
+_LIVE_Y    = 153
+_SLIDER_Y  = 177
 _SLIDER_X  = 255
 _SLIDER_W  = 210   # thumb at 255 + slider_value * 210
 _SLIDER_H  = 8
-_INSIGHT_Y = 205
+_INSIGHT_Y = 232
 
 # Slider ranges (linear)
 _I_MIN = 0.0001   # A   (0.1 mA)
