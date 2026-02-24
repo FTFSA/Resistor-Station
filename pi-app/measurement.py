@@ -127,7 +127,7 @@ class ResistanceMeter:
         ads = ADS.ADS1115(i2c, address=i2c_address)
         ads.gain = 1  # ±4.096 V full-scale — covers 0–3.3 V
 
-        self._channel = AnalogIn(ads, ADS.P0)
+        self._channel = AnalogIn(ads, 0)  # channel A0
 
     # ------------------------------------------------------------------
     # Public interface
