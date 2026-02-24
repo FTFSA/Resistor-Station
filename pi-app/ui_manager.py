@@ -100,8 +100,9 @@ class UIManager:
         else:
             # Hardware path — full Pygame setup.
             pygame.init()
+            _flags = pygame.FULLSCREEN | getattr(pygame, "SCALED", 0)
             self.screen = pygame.display.set_mode(
-                (SCREEN_W, SCREEN_H), pygame.FULLSCREEN
+                (SCREEN_W, SCREEN_H), _flags
             )
             pygame.display.set_caption("Resistor Station")
             self._surface = self.screen
