@@ -1,7 +1,7 @@
 [Unit]
 Description=Resistor Station Teaching App
-After=graphical.target
-Wants=graphical.target
+After=display-manager.service
+Wants=display-manager.service
 
 [Service]
 Type=simple
@@ -12,10 +12,11 @@ Restart=on-failure
 RestartSec=3
 
 # Give hardware time to initialise on boot
-ExecStartPre=/bin/sleep 2
+# Wait for display manager + hardware to be ready
+ExecStartPre=/bin/sleep 5
 
 # Allow access to I2C, serial
 SupplementaryGroups=video input i2c dialout gpio
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=graphical.target
