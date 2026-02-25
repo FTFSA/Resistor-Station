@@ -16,6 +16,7 @@ Packet format (from Pi):
 V_IN is always 3.3 V (Pi uses a 3.3 V voltage divider).
 """
 
+import gc
 import time
 import digitalio
 import board
@@ -34,6 +35,7 @@ _IDLE_TIMEOUT    = 3.0      # seconds without a packet before going IDLE
 _BTN_DEBOUNCE    = 0.2      # seconds — ignore button presses within this window
 _STATE_IDLE      = 0
 _STATE_ACTIVE    = 1
+_FRAME_INTERVAL  = 0.04   # ~25 fps cap for active animation
 
 # ---------------------------------------------------------------------------
 # Startup banner
@@ -72,6 +74,10 @@ _btn_down = digitalio.DigitalInOut(pins.BUTTON_DOWN)
 _btn_down.direction = digitalio.Direction.INPUT
 _btn_down.pull      = digitalio.Pull.UP
 
+# Free memory consumed by hardware init temporaries
+gc.collect()
+print("Free memory after init: %d bytes" % gc.mem_free())
+
 # ---------------------------------------------------------------------------
 # Runtime state — all pre-allocated as plain scalars (no dicts/objects here)
 # ---------------------------------------------------------------------------
@@ -81,6 +87,7 @@ _last_packet_t  = 0.0   # time.monotonic() of the last valid packet
 _btn_up_last    = 0.0   # last accepted up-button press time
 _btn_down_last  = 0.0   # last accepted down-button press time
 _strip_is_off   = True  # tracks whether strip needs transition cleanup
+_last_frame     = 0.0   # time of last active-animation frame
 
 # ---------------------------------------------------------------------------
 # Button handling helpers (non-blocking, debounced)
@@ -112,59 +119,74 @@ def _check_button_down(now):
 print("Main loop started.")
 
 while True:
-    now = time.monotonic()
+    try:
+        now = time.monotonic()
 
-    # -- Button polling (non-blocking, debounced) --
-    if _check_button_up(now):
-        print("Button UP pressed (state=%d)" % _state)
-        # Reserved for future mode switching
+        # -- Button polling (non-blocking, debounced) --
+        if _check_button_up(now):
+            print("Button UP pressed (state=%d)" % _state)
+            # Reserved for future mode switching
 
-    if _check_button_down(now):
-        print("Button DOWN pressed (state=%d)" % _state)
-        # Reserved for future mode switching
+        if _check_button_down(now):
+            print("Button DOWN pressed (state=%d)" % _state)
+            # Reserved for future mode switching
 
-    # -- Serial packet polling --
-    packet = receiver.read_packet()
+        # -- Serial packet polling --
+        packet = receiver.read_packet()
 
-    if packet is not None:
-        # New measurement from Pi — extract resistance and derive current
-        resistance = packet["resistance"]
+        if packet is not None:
+            # New measurement from Pi — extract resistance and derive current
+            resistance = packet["resistance"]
 
-        # Guard against zero/negative resistance from a bad read
-        if resistance < 0.1:
-            resistance = 0.1
+            # Guard against zero/negative resistance from a bad read
+            if resistance < 0.1:
+                resistance = 0.1
 
-        current = V_IN / resistance
+            current = V_IN / resistance
 
-        # Push values to all output subsystems
-        anim.set_params(V_IN, resistance)
-        bulb.set_current(current)
-        strip.set_current(current)
+            # Push values to all output subsystems
+            anim.set_params(V_IN, resistance)
+            bulb.set_current(current)
+            strip.set_current(current)
 
-        _last_packet_t = now
+            _last_packet_t = now
 
-        if _state != _STATE_ACTIVE:
-            _state = _STATE_ACTIVE
-            _strip_is_off = False
-            print("-> ACTIVE  R=%.1f Ohm  I=%.4f A" % (resistance, current))
+            if _state != _STATE_ACTIVE:
+                _state = _STATE_ACTIVE
+                _strip_is_off = False
+                print("-> ACTIVE  R=%.1f Ohm  I=%.4f A" % (resistance, current))
 
-    # -- State machine --
-    if _state == _STATE_ACTIVE:
-        # Check whether the Pi has gone silent
-        if now - _last_packet_t > _IDLE_TIMEOUT:
-            # Transition to IDLE
-            _state = _STATE_IDLE
-            anim.stop()
-            bulb.off()
-            strip.off()
-            _strip_is_off = True
-            print("-> IDLE (no packet for %.1f s)" % _IDLE_TIMEOUT)
+        # -- State machine --
+        if _state == _STATE_ACTIVE:
+            # Check whether the Pi has gone silent
+            if now - _last_packet_t > _IDLE_TIMEOUT:
+                # Transition to IDLE
+                _state = _STATE_IDLE
+                anim.stop()
+                bulb.off()
+                strip.off()
+                _strip_is_off = True
+                gc.collect()
+                print("-> IDLE (no packet for %.1f s)" % _IDLE_TIMEOUT)
+            else:
+                # Rate-limit active animation to ~25 fps to prevent
+                # MemoryError from temporary float allocations and
+                # timing conflicts between rgbmatrix DMA and NeoPixel.
+                if now - _last_frame >= _FRAME_INTERVAL:
+                    _last_frame = now
+                    gc.collect()
+                    anim.update()
+                    strip.update()
+
         else:
-            # Run live animations
-            anim.update()
-            strip.update()
+            # IDLE state — show static circuit on matrix, dim dot on strip
+            anim.idle_animation()
+            strip.idle_update()
 
-    else:
-        # IDLE state — show static circuit on matrix, dim dot on strip
-        anim.idle_animation()
-        strip.idle_update()
+    except MemoryError:
+        gc.collect()
+        print("MemoryError caught — free: %d bytes" % gc.mem_free())
+        time.sleep(0.1)
+    except Exception as e:
+        print("Main loop error: %s" % str(e))
+        time.sleep(0.5)
