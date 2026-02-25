@@ -11,6 +11,9 @@ cd "$APP_DIR"
 export DISPLAY=:0
 export XAUTHORITY=/home/azmeares/.Xauthority
 
+# Activate the project virtual environment
+source "$APP_DIR/../venv/bin/activate"
+
 # Ensure shared/ is importable
 export PYTHONPATH="$APP_DIR:$APP_DIR/../shared:${PYTHONPATH:-}"
 
