@@ -1,6 +1,7 @@
 [Unit]
 Description=Resistor Station Teaching App
-After=multi-user.target
+After=graphical.target
+Wants=graphical.target
 
 [Service]
 Type=simple
@@ -13,13 +14,8 @@ RestartSec=3
 # Give hardware time to initialise on boot
 ExecStartPre=/bin/sleep 2
 
-# Allow access to framebuffer, I2C, serial
+# Allow access to I2C, serial
 SupplementaryGroups=video input i2c dialout gpio
-
-# Pygame needs a TTY for framebuffer access
-StandardInput=tty
-TTYPath=/dev/tty1
-TTYReset=yes
 
 [Install]
 WantedBy=multi-user.target
