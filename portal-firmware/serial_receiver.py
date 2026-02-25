@@ -67,17 +67,17 @@ class SerialReceiver:
             self._port.timeout = 0
 
         # Accumulate incoming bytes here until a newline arrives.
-        self._buf: bytes = b""
+        self._buf = bytearray()
 
         # Time of the last successfully parsed packet, or None if we have
         # not yet received one.  Used by callers to detect connection loss.
-        self.last_received_time: float | None = None
+        self.last_received_time = None
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def read_packet(self) -> dict | None:
+    def read_packet(self):
         """Read any available bytes and return a parsed packet if complete.
 
         Non-blocking.  Should be called frequently from the main loop.
@@ -96,7 +96,7 @@ class SerialReceiver:
         # Read only the bytes already in the OS buffer to avoid blocking.
         waiting = self._port.in_waiting
         if waiting > 0:
-            self._buf += self._port.read(waiting)
+            self._buf.extend(self._port.read(waiting))
 
         # Safety valve: discard if the buffer grows unreasonably large
         # (indicates missing newlines or a badly misbehaving sender).
@@ -105,7 +105,7 @@ class SerialReceiver:
                 "SerialReceiver: buffer overflow (%d bytes), discarding"
                 % len(self._buf)
             )
-            self._buf = b""
+            self._buf = bytearray()
             return None
 
         # Check for one or more complete lines.
@@ -136,7 +136,7 @@ class SerialReceiver:
 
         return None
 
-    def is_connected(self) -> bool:
+    def is_connected(self):
         """Return True if a packet was received within the last 3 seconds."""
         if self.last_received_time is None:
             return False
@@ -146,7 +146,7 @@ class SerialReceiver:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _parse(self, line: str) -> dict | None:
+    def _parse(self, line):
         """Parse a single packet line into a measurement dict.
 
         Expected format::

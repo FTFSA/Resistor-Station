@@ -271,8 +271,14 @@ class ScreenOhmTriangle:
             status = measurement.get("status", "present")
             if status == "present":
                 self._live_r = measurement["resistance"]
-                self.resistance = self._live_r
-                self._recalculate()
+                # Only feed live R into the solver when R is an input
+                # (i.e. solving for V or I).  When solving for R, the
+                # slider-derived V and I determine R — don't overwrite.
+                if self.selected != "R":
+                    self.resistance = self._live_r
+                    self._recalculate()
+            else:
+                self._live_r = None
 
     def draw(self, surface=None) -> None:
         """Render the Ohm's Law triangle screen.

@@ -267,6 +267,9 @@ class ScreenCalculator:
             # The fill() above already satisfies the test's "drew pixels" check.
             pass
 
+        # Clear pressed key after drawing so feedback shows for exactly one frame.
+        self._pressed_key = None
+
     def handle_event(self, event) -> None:
         """Process keyboard input for the calculator.
 
@@ -293,10 +296,14 @@ class ScreenCalculator:
             self._calculate()
             return
 
-        # Digit characters and decimal point are appended to the buffer.
+        # Digit characters are appended to the buffer.
         if event.unicode.isdigit():
             if len(self.input_buffer) < 10:
                 self.input_buffer += event.unicode
+        # Decimal point — allow at most one.
+        elif event.unicode == ".":
+            if "." not in self.input_buffer and len(self.input_buffer) < 10:
+                self.input_buffer += "."
 
     def handle_touch(self, x: int, y: int) -> None:
         """Process an on-screen tap at pixel coordinates (*x*, *y*).
@@ -330,15 +337,30 @@ class ScreenCalculator:
         elif label == "DEL":
             self.input_buffer = self.input_buffer[:-1]
         elif label == "kΩ":
-            # Shortcut: append three zeros (×1000)
-            if len(self.input_buffer) + 3 <= 10:
-                self.input_buffer += "000"
+            # Multiply current value by 1000
+            self._apply_multiplier(1000)
         elif label == "MΩ":
-            # Shortcut: append six zeros (×1 000 000)
-            if len(self.input_buffer) + 6 <= 10:
-                self.input_buffer += "000000"
+            # Multiply current value by 1 000 000
+            self._apply_multiplier(1_000_000)
         elif label == "=":
             self._calculate()
+
+    def _apply_multiplier(self, factor: int) -> None:
+        """Parse input_buffer as a number, multiply by factor, and update buffer."""
+        if not self.input_buffer:
+            return
+        try:
+            value = float(self.input_buffer) * factor
+            # Format as integer if whole, otherwise strip trailing zeros
+            if value == int(value):
+                self.input_buffer = str(int(value))
+            else:
+                self.input_buffer = f"{value:g}"
+            # Clamp to max display length
+            if len(self.input_buffer) > 10:
+                self.input_buffer = self.input_buffer[:10]
+        except ValueError:
+            pass
 
     def _calculate(self) -> None:
         """Parse input_buffer, snap to E24, and store result bands."""

@@ -134,8 +134,9 @@ def resistance_to_bands(ohms: float, tolerance: float = 0.05) -> list[dict]:
     exponent = math.floor(math.log10(ohms))
     mantissa = ohms / (10 ** (exponent - 1))  # in [10.0, 100.0)
 
-    digit1 = int(mantissa) // 10
-    digit2 = int(mantissa) % 10
+    mantissa_int = round(mantissa)
+    digit1 = mantissa_int // 10
+    digit2 = mantissa_int % 10
 
     # Clamp to valid digit range (defensive; E24 values never need this).
     digit1 = max(0, min(9, digit1))
@@ -208,6 +209,9 @@ if __name__ == "__main__":
         (330,    "Orange-Orange-Brown-Gold"),
         (10000,  "Brown-Black-Orange-Gold"),
         (100,    "Brown-Black-Brown-Gold"),
+        (510000, "Green-Brown-Yellow-Gold"),    # was failing: float truncation
+        (820000, "Gray-Red-Yellow-Gold"),       # was failing: float truncation
+        (8200000,"Gray-Red-Green-Gold"),        # was failing: float truncation
     ]
 
     all_pass = True

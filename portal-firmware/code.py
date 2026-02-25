@@ -58,7 +58,7 @@ receiver = SerialReceiver()
 anim = CurrentAnimation()
 
 # NeoPixel strip animation
-strip = StripAnimation(num_pixels=30)
+strip = StripAnimation(num_pixels=60)
 
 # DAC-controlled LED bulb
 bulb = BulbControl()

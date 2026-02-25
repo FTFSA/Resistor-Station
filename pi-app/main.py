@@ -144,8 +144,10 @@ def main() -> None:
                 live_lab.update(
                     dt,
                     measurement=last_result,
-                    bands=last_bands if last_bands else None,
+                    bands=last_bands,
                 )
+            elif mgr.current_screen == "ohm_triangle":
+                triangle.update(dt, measurement=last_result)
             else:
                 mgr.update(dt)
 
