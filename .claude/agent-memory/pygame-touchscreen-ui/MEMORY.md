@@ -71,13 +71,13 @@ Optional: on_enter(), on_exit()
 draw() receives surface as argument; must call surface.fill(), surface.blit(), or pygame.draw.*
 
 ## ScreenLiveLab Layout (screen_live_lab.py)
-- NAV_H=50 (content ends at y=270); TOP_H=145, CARD_Y=150, CARD_H=95, CARD_W=140
-- RES_CX=240, RES_CY=58, RES_W=280, RES_H=54; body occupies 70% of width
+- NAV_H=48 (content ends at y=272); TOP_H=155, CARD_Y=158, CARD_H=110, CARD_W=140
+- RES_CX=240, RES_CY=68, RES_W=280, RES_H=70; body occupies 70% of width
 - LEAD_W=42, BODY_X=98, BODY_W=196; BAND_W=max(2, int(280*0.06))=16px
 - Band centres at 20%/40%/60%/80% of BODY_W from BODY_X
-- BAND_LABEL_Y = RES_Y + RES_H + 6; VALUE_Y = BAND_LABEL_Y + 18
+- RES_Y = 68-35 = 33; BAND_LABEL_Y = 33+70+6 = 109; VALUE_Y = 127
 - Three cards use CARD_GAP = (480 - 3*140) // 4 = 15px equal spacing
-- Card x positions: [15, 170, 325]; card top at y=150
+- Card x positions: [15, 170, 325]; card top at y=158, bottom at y=268
 - Card accent top border: 2px line at y+1, from x+4 to x+CARD_W-5
 
 ## ScreenLiveLab Dual-Mode Construction
@@ -98,12 +98,12 @@ draw() receives surface as argument; must call surface.fill(), surface.blit(), o
 - Font render + blit wrapped in same try/except block as pygame.draw calls
 
 ## ScreenOhmTriangle Layout (screen_ohm_triangle.py)
-- Triangle vertices: apex=(122,20), left=(20,210), right=(224,210)
-- Dividing line at y=_TRI_MID_Y = (20+210)//2 = 115; interpolated left/right edge x at that y
+- Triangle vertices: apex=(122,15), left=(20,250), right=(224,250)
+- Dividing line at y=_TRI_MID_Y = (15+250)//2 = 132; interpolated left/right edge x at that y
 - Three polygon zones: V (apex→edge_l→edge_r), I (edge_l→left→mid_bottom), R (edge_r→mid_bottom→right)
 - Zone hit-test: y < _TRI_MID_Y → V; else x < mid_x → I; else R (using _point_in_triangle)
-- Label centres: V=(122,78), I=(62,168), R=(182,168)
-- Right panel: x=250–470; formula card y=10–130, live indicator y=133, slider y=155, insight y=205
+- Label centres: V=(122,88), I=(62,205), R=(182,205)
+- Right panel: x=250–470; formula card y=10, h=130 (ends y=140); live indicator y=153; slider y=177; insight y=232
 - Slider track: x=255, w=210, h=8; thumb radius=10; hit rect is track ±14px vertically
 - Slider controls: selected=V → adjusts I (0.1–10mA); selected=I or R → adjusts V (0.1–30V)
 - dual-mode update(dt=None, measurement=None): app mode sets _live_r when status=='present'
@@ -111,10 +111,11 @@ draw() receives surface as argument; must call surface.fill(), surface.blit(), o
 - on_enter() resets slider_value=0.5 and calls _recalculate()
 
 ## ScreenCalculator Layout (screen_calculator.py)
-- NAV_H=50 (content ends at y=270); left panel x=10–220 (_LEFT_W=210), right panel x=234–470
+- NAV_H=48 (content ends at y=272); left panel x=10–220 (_LEFT_W=210), right panel x=234–470
 - Input box: y=20, h=44; label "Enter resistance" above at y=6
 - Result card: y=86, h=44; label "Nearest E24" above at y=74
-- Resistor illustration: y=140, h=60; body _RES_W=200, _RES_H=38; band labels at _RES_Y+_RES_H+4
+- Resistor illustration: _RES_AREA_Y=140, _RES_AREA_H=126, _RES_W=200, _RES_H=60
+  - _RES_Y = 140+(126-60)//2 = 173; _BAND_LABEL_Y = 173+60+4 = 237; labels end ~249
 - Keypad: 3 cols × 5 rows, _KP_BTN_W=68, _KP_BTN_H=44, _KP_GAP=6; starts at x=234, y=8
   - Row layout: [1,2,3], [4,5,6], [7,8,9], [.,0,DEL], [kΩ,MΩ,=]
   - DEL: bg=(60,30,30), fg=RED; =: bg=ACCENT, fg=(15,23,42); others: bg=(30,45,75), fg=TEXT_COLOR
