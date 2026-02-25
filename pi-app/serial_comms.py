@@ -23,6 +23,7 @@ patch serial.Serial in unit tests.
 """
 
 from __future__ import annotations
+import glob
 
 import logging
 import time
@@ -61,6 +62,7 @@ class PortalSerial:
                      but this is kept for consistency.
         """
         self._port = port
+        self._configured_port = port
         self._baud = baud
         self._timeout = timeout
 
@@ -131,22 +133,25 @@ class PortalSerial:
 
     def _open_port(self) -> bool:
         """Try to open the serial port.  Returns True on success."""
-        try:
-            self._ser = serial.Serial(
-                self._port,
-                self._baud,
-                timeout=self._timeout,
-            )
-            log.info("Opened serial port %s at %d baud", self._port, self._baud)
-            return True
-        except (serial.SerialException, FileNotFoundError, OSError) as exc:
-            log.warning(
-                "Could not open serial port %s: %s — Portal not connected?",
-                self._port,
-                exc,
-            )
-            self._ser = None
-            return False
+        for candidate_port in self._candidate_ports():
+            try:
+                self._ser = serial.Serial(
+                    candidate_port,
+                    self._baud,
+                    timeout=self._timeout,
+                )
+                self._port = candidate_port
+                log.info("Opened serial port %s at %d baud", self._port, self._baud)
+                return True
+            except (serial.SerialException, FileNotFoundError, OSError) as exc:
+                log.warning(
+                    "Could not open serial port %s: %s — Portal not connected?",
+                    candidate_port,
+                    exc,
+                )
+
+        self._ser = None
+        return False
 
     def _reconnect(self) -> bool:
         """Attempt to reopen the serial port, respecting a cooldown period.
@@ -201,3 +206,20 @@ class PortalSerial:
             # Schedule a reconnect on the next send attempt (do not block
             # here — the caller's main loop should continue unimpeded).
             return False
+
+    def _candidate_ports(self) -> list[str]:
+        """Return ordered candidate serial device paths."""
+        candidates = [self._configured_port]
+        patterns = [
+            "/dev/ttyACM*",
+            "/dev/ttyUSB*",
+            "/dev/tty.usbmodem*",
+            "/dev/tty.usbserial*",
+            "/dev/cu.usbmodem*",
+            "/dev/cu.usbserial*",
+        ]
+        for pattern in patterns:
+            for path in sorted(glob.glob(pattern)):
+                if path not in candidates:
+                    candidates.append(path)
+        return candidates
