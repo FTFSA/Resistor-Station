@@ -15,6 +15,7 @@ Public API
     strip.off()               # fill black, show, reset phase
 """
 
+import time
 import neopixel
 import pins
 
@@ -55,6 +56,9 @@ class StripAnimation:
         # Pre-allocate the RGB tuple that is reused for every lit pixel.
         # _color is a plain list [r, g, b] — mutated in-place by _compute_color().
         self._color = [0, 0, 0]
+
+        # Idle animation timing
+        self._idle_last = 0.0
 
     # ------------------------------------------------------------------
     # Public API
@@ -112,9 +116,18 @@ class StripAnimation:
         strip.show()
 
     def idle_update(self):
-        """Single dim blue dot drifts along the strip; call in idle state."""
+        """Single dim blue dot drifts along the strip; call in idle state.
+
+        Rate-limited to ~12 fps so NeoPixel writes don't disrupt the
+        HUB75 matrix DMA refresh.
+        """
         if self._strip is None:
             return
+        now = time.monotonic()
+        if now - self._idle_last < 0.08:
+            return
+        self._idle_last = now
+
         strip = self._strip
         num = self._num_pixels
         self._phase = (self._phase + 1) % num
