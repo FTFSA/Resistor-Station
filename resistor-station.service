@@ -4,9 +4,9 @@ After=multi-user.target
 
 [Service]
 Type=simple
-User=robert
-WorkingDirectory=/home/robert/Resistor-Station/pi-app
-ExecStart=/home/robert/Resistor-Station/pi-app/start.sh
+User=azmeares
+WorkingDirectory=/home/azmeares/Resistor-Station/pi-app
+ExecStart=/home/azmeares/Resistor-Station/pi-app/start.sh
 Restart=on-failure
 RestartSec=3
 
