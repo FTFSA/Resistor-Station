@@ -1,0 +1,25 @@
+[Unit]
+Description=Resistor Station Teaching App
+After=multi-user.target
+
+[Service]
+Type=simple
+User=robert
+WorkingDirectory=/home/robert/Resistor-Station/pi-app
+ExecStart=/home/robert/Resistor-Station/pi-app/start.sh
+Restart=on-failure
+RestartSec=3
+
+# Give hardware time to initialise on boot
+ExecStartPre=/bin/sleep 2
+
+# Allow access to framebuffer, I2C, serial
+SupplementaryGroups=video input i2c dialout gpio
+
+# Pygame needs a TTY for framebuffer access
+StandardInput=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+
+[Install]
+WantedBy=multi-user.target
