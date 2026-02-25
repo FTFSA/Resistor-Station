@@ -2,25 +2,14 @@
 Resistor Station - Resistor Calculator Screen
 
 Enter a target resistance; display the nearest E24 value and colour bands.
-
-Layout (480 × 320, content area 480 × 272 above the nav bar):
-
-  LEFT PANEL  (x  10–220)  Input display, E24 result card, resistor illustration
-  RIGHT PANEL (x 230–470)  3 × 5 on-screen keypad
-
-Construction modes (mirrors ScreenLiveLab pattern):
-  ScreenCalculator(surface)     — test / legacy mode: plain Surface or MagicMock
-  ScreenCalculator(ui_manager)  — app mode: UIManager instance passed as 'surface'
+Brutalist light theme: white cards, black borders, hard shadows.
 """
 
 from __future__ import annotations
 
 import math
-
 import pygame
 
-# These are imported at module level so tests can patch them via
-# patch("screen_calculator.snap_to_e24") and patch("screen_calculator.resistance_to_bands").
 from color_code import snap_to_e24, resistance_to_bands
 
 # ---------------------------------------------------------------------------
@@ -29,106 +18,99 @@ from color_code import snap_to_e24, resistance_to_bands
 
 SCREEN_W  = 480
 SCREEN_H  = 320
-NAV_H     = 48    # content area ends at y = 272
-CONTENT_H = SCREEN_H - NAV_H   # 272 px
+NAV_H     = 48
+STATUS_H  = 24
+CONTENT_Y = STATUS_H
+CONTENT_H = SCREEN_H - NAV_H - STATUS_H   # 248 px
 
-# Left panel: input + result + resistor illustration
+CONTENT_AREA = pygame.Rect(0, CONTENT_Y, SCREEN_W, CONTENT_H)
+
+# Left panel
 _LEFT_X  = 10
-_LEFT_W  = 210    # x 10–220
+_LEFT_W  = 210
 _LEFT_CX = _LEFT_X + _LEFT_W // 2
 
-# Input display box
-_INPUT_LABEL_Y = 6
-_INPUT_BOX_Y   = 20
+_INPUT_LABEL_Y = CONTENT_Y + 4
+_INPUT_BOX_Y   = CONTENT_Y + 18
 _INPUT_BOX_H   = 44
-_INPUT_BOX     = None   # built lazily (requires Rect)
 
-# E24 result card
-_RESULT_LABEL_Y = 74
-_RESULT_BOX_Y   = 86
+_RESULT_LABEL_Y = CONTENT_Y + 70
+_RESULT_BOX_Y   = CONTENT_Y + 84
 _RESULT_BOX_H   = 44
 
-# Resistor illustration
-_RES_AREA_Y   = 140
-_RES_AREA_H   = 126
+_RES_AREA_Y   = CONTENT_Y + 136
+_RES_AREA_H   = 106
 _RES_W        = 200
-_RES_H        = 60
+_RES_H        = 50
 _RES_X        = _LEFT_X + (_LEFT_W - _RES_W) // 2
 _RES_Y        = _RES_AREA_Y + (_RES_AREA_H - _RES_H) // 2
 _BAND_LABEL_Y = _RES_Y + _RES_H + 4
 
-# Band geometry (mirrors screen_live_lab.py ratios)
-_LEAD_PCT        = 0.15
-_BODY_PCT        = 0.70
-_RES_LEAD_W      = int(_RES_W * _LEAD_PCT)
-_RES_BODY_X      = _RES_X + _RES_LEAD_W
-_RES_BODY_W      = int(_RES_W * _BODY_PCT)
-_RES_BAND_W      = max(2, int(_RES_W * 0.06))
-_RES_BAND_PCTS   = [0.20, 0.40, 0.60, 0.80]
+_LEAD_PCT      = 0.15
+_BODY_PCT      = 0.70
+_RES_LEAD_W    = int(_RES_W * _LEAD_PCT)
+_RES_BODY_X    = _RES_X + _RES_LEAD_W
+_RES_BODY_W    = int(_RES_W * _BODY_PCT)
+_RES_BAND_W    = max(2, int(_RES_W * 0.06))
+_RES_BAND_PCTS = [0.20, 0.40, 0.60, 0.80]
 
-# Right panel: on-screen keypad
-_KP_LEFT   = 234   # x start of keypad area
-_KP_TOP    = 8     # y start
-_KP_BTN_W  = 68    # button width  (≥44 px — touch-safe)
-_KP_BTN_H  = 44    # button height (≥44 px)
-_KP_GAP    = 6     # gap between buttons
+# Right panel: keypad
+_KP_LEFT   = 234
+_KP_TOP    = CONTENT_Y + 6
+_KP_BTN_W  = 68
+_KP_BTN_H  = 44
+_KP_GAP    = 6
 _KP_COLS   = 3
 
 # ---------------------------------------------------------------------------
-# Colour palette  (mirrors ui_manager.py)
+# Colour palette — brutalist light theme
 # ---------------------------------------------------------------------------
 
-BG_COLOR      = (15,  23,  42)
-CARD_BG       = (22,  33,  62)
-RESULT_BG     = (15,  30,  20)   # green-tinted when result exists
-TEXT_COLOR    = (226, 232, 240)
-TEXT_MUTED    = (150, 160, 180)
-ACCENT        = (56,  189, 248)  # cyan — equals button
-GREEN         = (52,  211, 153)  # E24 result value
-RED           = (248, 113, 113)  # backspace label
-RESISTOR_TAN  = (210, 180, 140)
-LEAD_COLOR    = (160, 160, 160)
-GHOST_COLOR   = (80,  90,  120)
+BG_COLOR       = (247, 245, 240)
+CARD_BG        = (255, 255, 255)
+RESULT_BG      = (240, 253, 244)   # green-tinted when result exists
+TEXT_COLOR      = (24,  24,  27)
+TEXT_MUTED      = (113, 113, 122)
+BORDER_COLOR    = (0,   0,   0)
+SHADOW_COLOR    = (0,   0,   0)
+GRID_COLOR      = (235, 233, 228)
+SCREW_COLOR     = (161, 161, 170)
+ACCENT          = (239, 68,  68)    # red-500
+GREEN           = (34,  197, 94)    # green-500
+RED             = (239, 68,  68)
+RESISTOR_TAN    = (232, 222, 194)
+LEAD_COLOR      = (24,  24,  27)
+GHOST_COLOR     = (161, 161, 170)
+LCD_GREEN       = (57,  255, 20)
 
-_KP_DIGIT_BG  = (30,  45,  75)
-_KP_DEL_BG    = (60,  30,  30)
-_KP_EQ_BG     = ACCENT
-_KP_EQ_FG     = (15,  23,  42)   # dark text on bright cyan
-
-# ---------------------------------------------------------------------------
-# Keypad layout definition
-# Row 0: 1 2 3
-# Row 1: 4 5 6
-# Row 2: 7 8 9
-# Row 3: . 0 ⌫
-# Row 4: kΩ MΩ =
-# ---------------------------------------------------------------------------
+_KP_DIGIT_BG   = (255, 255, 255)
+_KP_DEL_BG     = (239, 68,  68)    # red-500
+_KP_EQ_BG      = (57,  255, 20)    # LCD green
+_KP_EQ_FG      = (24,  24,  27)
 
 _KEYPAD_LAYOUT = [
     ["1",  "2",  "3" ],
     ["4",  "5",  "6" ],
     ["7",  "8",  "9" ],
     [".",  "0",  "DEL"],
-    ["kΩ", "MΩ", "=" ],
+    ["\u006b\u03a9", "M\u03a9", "=" ],
 ]
 
-# Per-button styling: (bg_color, text_color)
-_KEYPAD_STYLE: dict[str, tuple] = {
-    "DEL": (_KP_DEL_BG, RED),
+_KEYPAD_STYLE = {
+    "DEL": (_KP_DEL_BG, (255, 255, 255)),
     "=":   (_KP_EQ_BG,  _KP_EQ_FG),
 }
 _KEYPAD_DEFAULT_STYLE = (_KP_DIGIT_BG, TEXT_COLOR)
 
 
 # ---------------------------------------------------------------------------
-# Font helpers  (module-level cache, safe to call multiple times)
+# Font helpers
 # ---------------------------------------------------------------------------
 
-_FONT_CACHE: dict[str, pygame.font.Font] | None = None
+_FONT_CACHE = None
 
 
-def _load_font(family: str, size: int, bold: bool = False) -> pygame.font.Font:
-    """Load a font by family name with a fallback to the default font."""
+def _load_font(family, size, bold=False):
     try:
         font = pygame.font.SysFont(family, size, bold=bold)
         if font is None:
@@ -138,8 +120,7 @@ def _load_font(family: str, size: int, bold: bool = False) -> pygame.font.Font:
         return pygame.font.SysFont(None, size, bold=bold)
 
 
-def _fonts() -> dict[str, pygame.font.Font]:
-    """Return cached font dict, initialising on first call."""
+def _fonts():
     global _FONT_CACHE
     if _FONT_CACHE is None:
         pygame.font.init()
@@ -153,19 +134,10 @@ def _fonts() -> dict[str, pygame.font.Font]:
 
 
 # ---------------------------------------------------------------------------
-# Pure-surface drawing helpers
+# Drawing helpers
 # ---------------------------------------------------------------------------
 
-def _draw_text(
-    surface: pygame.Surface,
-    text: str,
-    font: pygame.font.Font,
-    color: tuple,
-    x: int,
-    y: int,
-    anchor: str = "topleft",
-) -> pygame.Rect:
-    """Render *text* onto *surface* at the given anchor position."""
+def _draw_text(surface, text, font, color, x, y, anchor="topleft"):
     surf = font.render(text, True, color)
     rect = surf.get_rect()
     setattr(rect, anchor, (x, y))
@@ -173,19 +145,33 @@ def _draw_text(
     return rect
 
 
-def _draw_rounded_rect(
-    surface: pygame.Surface,
-    color: tuple,
-    rect: pygame.Rect,
-    radius: int = 8,
-    width: int = 0,
-) -> None:
-    """Draw a filled or outlined rounded rectangle."""
-    pygame.draw.rect(surface, color, rect, width=width, border_radius=radius)
+def _draw_hard_shadow_rect(surface, rect, color, radius=8):
+    shadow = rect.move(2, 2)
+    pygame.draw.rect(surface, SHADOW_COLOR, shadow, border_radius=radius)
+    pygame.draw.rect(surface, color, rect, border_radius=radius)
+    pygame.draw.rect(surface, BORDER_COLOR, rect, width=2, border_radius=radius)
 
 
-def _format_e24(ohms: float) -> str:
-    """Return a compact SI-prefixed string for *ohms* (e.g. '4.7kΩ')."""
+def _draw_grid(surface, area):
+    for x in range(area.left, area.right, 20):
+        pygame.draw.line(surface, GRID_COLOR, (x, area.top), (x, area.bottom))
+    for y in range(area.top, area.bottom, 20):
+        pygame.draw.line(surface, GRID_COLOR, (area.left, y), (area.right, y))
+
+
+def _draw_screws(surface, area):
+    inset = 8
+    for pos in [
+        (area.left + inset, area.top + inset),
+        (area.right - inset, area.top + inset),
+        (area.left + inset, area.bottom - inset),
+        (area.right - inset, area.bottom - inset),
+    ]:
+        pygame.draw.circle(surface, SCREW_COLOR, pos, 3)
+        pygame.draw.circle(surface, BORDER_COLOR, pos, 3, 1)
+
+
+def _format_e24(ohms):
     if ohms >= 1_000_000:
         scaled, unit = ohms / 1_000_000, "M\u03a9"
     elif ohms >= 1_000:
@@ -203,117 +189,64 @@ def _format_e24(ohms: float) -> str:
 # ---------------------------------------------------------------------------
 
 class ScreenCalculator:
-    """Resistor value calculator screen.
-
-    Accepts keyboard digit input or on-screen keypad taps, snaps the entered
-    value to the nearest E24 series value, and displays the corresponding
-    resistor colour bands.
-
-    Args:
-        surface: pygame.Surface to render onto (480×320), OR a UIManager
-                 instance (detected via ``hasattr(surface, '_surface')``).
-    """
+    """Resistor value calculator with brutalist light theme."""
 
     def __init__(self, surface) -> None:
-        # Detect UIManager by duck-typing (same pattern as ScreenLiveLab).
         if hasattr(surface, "_surface"):
-            # App mode: UIManager passed as 'surface'
             self._ui      = surface
             self._surface = surface._surface
         else:
-            # Test / legacy mode: plain Surface or MagicMock
             self._ui      = None
             self._surface = surface
 
-        self.input_buffer: str  = ""    # Digits typed by the user (string)
-        self._result_bands: list = []   # Colour bands from last calculation
-        self._result_value: float | None = None  # Snapped E24 value
-
-        # Keypad hit-rects: list of (label: str, rect: pygame.Rect)
+        self.input_buffer: str  = ""
+        self._result_bands: list = []
+        self._result_value: float | None = None
         self._keypad_rects: list[tuple[str, pygame.Rect]] = []
-
-        # Pressed key tracking for visual feedback (label string or None)
         self._pressed_key: str | None = None
 
-        # Ensure font subsystem is ready before any draw call.
         if not pygame.font.get_init():
             pygame.font.init()
 
     # ------------------------------------------------------------------
-    # Screen interface — update / draw / event handling
+    # Screen interface
     # ------------------------------------------------------------------
 
-    def update(self, dt: float) -> None:
-        """No-op: this screen has no time-based animation."""
+    def update(self, dt):
         pass
 
-    def draw(self, surface: pygame.Surface | None = None) -> None:
-        """Render the full calculator UI.
-
-        Args:
-            surface: Explicit target surface.  Defaults to self._surface.
-        """
+    def draw(self, surface=None):
         target = surface if surface is not None else self._surface
-
-        # Always fill first — works on both real surfaces and MagicMocks.
         target.fill(BG_COLOR)
 
         try:
             fnt = _fonts()
+            _draw_grid(target, CONTENT_AREA)
             self._draw_left_panel(target, fnt)
             self._draw_right_panel(target, fnt)
+            _draw_screws(target, CONTENT_AREA)
         except Exception:
-            # pygame.draw.* calls fail on MagicMock surfaces in tests.
-            # The fill() above already satisfies the test's "drew pixels" check.
             pass
 
-        # Clear pressed key after drawing so feedback shows for exactly one frame.
         self._pressed_key = None
 
-    def handle_event(self, event) -> None:
-        """Process keyboard input for the calculator.
-
-        Handles:
-        - K_BACKSPACE: remove the last character from input_buffer.
-        - K_RETURN:    parse buffer as float, snap to E24, look up colour bands.
-        - Digit chars: append to input_buffer (max 10 chars).
-        - ``"."`` char: append decimal point (max 10 chars, no duplicate).
-        - Everything else: ignored.
-
-        Args:
-            event: A pygame event object.
-        """
+    def handle_event(self, event):
         if event.type != pygame.KEYDOWN:
             return
-
-        # Check special keys first (before inspecting unicode) so that
-        # K_BACKSPACE is handled even when event.unicode is empty.
         if event.key == pygame.K_BACKSPACE:
             self.input_buffer = self.input_buffer[:-1]
             return
-
         if event.key == pygame.K_RETURN:
             self._calculate()
             return
-
-        # Digit characters are appended to the buffer.
         if event.unicode.isdigit():
             if len(self.input_buffer) < 10:
                 self.input_buffer += event.unicode
-        # Decimal point — allow at most one.
         elif event.unicode == ".":
             if "." not in self.input_buffer and len(self.input_buffer) < 10:
                 self.input_buffer += "."
 
-    def handle_touch(self, x: int, y: int) -> None:
-        """Process an on-screen tap at pixel coordinates (*x*, *y*).
-
-        Checks ``self._keypad_rects`` (built during draw) and dispatches
-        to the appropriate action for the tapped button.
-
-        Args:
-            x, y: Pixel coordinates of the tap.
-        """
+    def handle_touch(self, x, y):
         for label, rect in self._keypad_rects:
             if rect.collidepoint(x, y):
                 self._pressed_key = label
@@ -322,48 +255,40 @@ class ScreenCalculator:
         self._pressed_key = None
 
     # ------------------------------------------------------------------
-    # Private: keypad action dispatcher
+    # Keypad dispatch
     # ------------------------------------------------------------------
 
-    def _handle_keypad_label(self, label: str) -> None:
-        """Dispatch a keypad button action by its label string."""
+    def _handle_keypad_label(self, label):
         if label in ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9"):
             if len(self.input_buffer) < 10:
                 self.input_buffer += label
         elif label == ".":
-            # Allow at most one decimal point; guard overall length.
             if "." not in self.input_buffer and len(self.input_buffer) < 10:
                 self.input_buffer += label
         elif label == "DEL":
             self.input_buffer = self.input_buffer[:-1]
-        elif label == "kΩ":
-            # Multiply current value by 1000
+        elif label == "k\u03a9":
             self._apply_multiplier(1000)
-        elif label == "MΩ":
-            # Multiply current value by 1 000 000
+        elif label == "M\u03a9":
             self._apply_multiplier(1_000_000)
         elif label == "=":
             self._calculate()
 
-    def _apply_multiplier(self, factor: int) -> None:
-        """Parse input_buffer as a number, multiply by factor, and update buffer."""
+    def _apply_multiplier(self, factor):
         if not self.input_buffer:
             return
         try:
             value = float(self.input_buffer) * factor
-            # Format as integer if whole, otherwise strip trailing zeros
             if value == int(value):
                 self.input_buffer = str(int(value))
             else:
                 self.input_buffer = f"{value:g}"
-            # Clamp to max display length
             if len(self.input_buffer) > 10:
                 self.input_buffer = self.input_buffer[:10]
         except ValueError:
             pass
 
-    def _calculate(self) -> None:
-        """Parse input_buffer, snap to E24, and store result bands."""
+    def _calculate(self):
         if self.input_buffer:
             try:
                 value = float(self.input_buffer)
@@ -371,34 +296,30 @@ class ScreenCalculator:
                 self._result_value = snapped
                 self._result_bands = resistance_to_bands(snapped)
             except (ValueError, Exception):
-                pass  # Malformed buffer — silently ignore
+                pass
 
     # ------------------------------------------------------------------
-    # Private: left panel drawing
+    # Left panel
     # ------------------------------------------------------------------
 
-    def _draw_left_panel(
-        self,
-        surface: pygame.Surface,
-        fnt: dict,
-    ) -> None:
-        """Draw input box, E24 result card, and resistor illustration."""
-        # ---- Input display box (y 20–64) --------------------------------
+    def _draw_left_panel(self, surface, fnt):
+        # Input box
         input_box = pygame.Rect(_LEFT_X, _INPUT_BOX_Y, _LEFT_W, _INPUT_BOX_H)
 
         _draw_text(surface, "Enter resistance", fnt["small"], TEXT_MUTED,
                    _LEFT_CX, _INPUT_LABEL_Y, anchor="midtop")
 
-        _draw_rounded_rect(surface, CARD_BG, input_box, radius=8)
-        # Accent top border
-        pygame.draw.line(surface, ACCENT,
-                         (_LEFT_X + 4, _INPUT_BOX_Y + 1),
-                         (_LEFT_X + _LEFT_W - 5, _INPUT_BOX_Y + 1), 2)
+        _draw_hard_shadow_rect(surface, input_box, CARD_BG)
+
+        # Accent top strip
+        strip = pygame.Rect(input_box.x + 2, input_box.y + 2,
+                             input_box.width - 4, 4)
+        pygame.draw.rect(surface, ACCENT, strip)
 
         if self.input_buffer:
             display_text = self.input_buffer + " \u03a9"
             _draw_text(surface, display_text, fnt["heading"], TEXT_COLOR,
-                       _LEFT_X + _LEFT_W - 8,
+                       _LEFT_X + _LEFT_W - 12,
                        _INPUT_BOX_Y + _INPUT_BOX_H // 2,
                        anchor="midright")
         else:
@@ -407,18 +328,18 @@ class ScreenCalculator:
                        _INPUT_BOX_Y + _INPUT_BOX_H // 2,
                        anchor="center")
 
-        # ---- E24 result card (y 86–130) ---------------------------------
+        # E24 result card
         result_box = pygame.Rect(_LEFT_X, _RESULT_BOX_Y, _LEFT_W, _RESULT_BOX_H)
         result_bg  = RESULT_BG if self._result_value is not None else CARD_BG
 
         _draw_text(surface, "Nearest E24", fnt["small"], TEXT_MUTED,
                    _LEFT_CX, _RESULT_LABEL_Y, anchor="midtop")
 
-        _draw_rounded_rect(surface, result_bg, result_box, radius=8)
-        # Accent top border
-        pygame.draw.line(surface, GREEN,
-                         (_LEFT_X + 4, _RESULT_BOX_Y + 1),
-                         (_LEFT_X + _LEFT_W - 5, _RESULT_BOX_Y + 1), 2)
+        _draw_hard_shadow_rect(surface, result_box, result_bg)
+
+        strip2 = pygame.Rect(result_box.x + 2, result_box.y + 2,
+                              result_box.width - 4, 4)
+        pygame.draw.rect(surface, GREEN, strip2)
 
         if self._result_value is not None:
             e24_text = _format_e24(self._result_value)
@@ -432,22 +353,11 @@ class ScreenCalculator:
                        _RESULT_BOX_Y + _RESULT_BOX_H // 2,
                        anchor="center")
 
-        # ---- Resistor illustration (y 140–200) --------------------------
+        # Resistor illustration
         self._draw_resistor_illustration(surface, fnt)
 
-    def _draw_resistor_illustration(
-        self,
-        surface: pygame.Surface,
-        fnt: dict,
-    ) -> None:
-        """Draw the mini resistor with computed colour bands below the cards.
-
-        Uses ``self._result_bands`` when available; falls back to a grey
-        placeholder when no calculation has been done yet.
-        """
+    def _draw_resistor_illustration(self, surface, fnt):
         res_cy = _RES_Y + _RES_H // 2
-
-        # Determine whether we have real band data (dicts with 'rgb' key).
         bands = self._result_bands
         has_bands = (
             isinstance(bands, list)
@@ -456,29 +366,25 @@ class ScreenCalculator:
             and "rgb" in bands[0]
         )
 
-        # Wire leads
         lead_col = LEAD_COLOR if has_bands else GHOST_COLOR
         pygame.draw.line(surface, lead_col,
-                         (_RES_X,                       res_cy),
-                         (_RES_BODY_X,                  res_cy), 2)
+                         (_RES_X, res_cy), (_RES_BODY_X, res_cy), 2)
         pygame.draw.line(surface, lead_col,
-                         (_RES_BODY_X + _RES_BODY_W,    res_cy),
-                         (_RES_X + _RES_W,              res_cy), 2)
+                         (_RES_BODY_X + _RES_BODY_W, res_cy),
+                         (_RES_X + _RES_W, res_cy), 2)
 
         body_rect = pygame.Rect(_RES_BODY_X, _RES_Y, _RES_BODY_W, _RES_H)
         radius    = max(2, _RES_H // 3)
 
         if not has_bands:
-            # Ghost placeholder
             pygame.draw.rect(surface, GHOST_COLOR, body_rect,
                              width=2, border_radius=radius)
             return
 
-        # Filled body
-        pygame.draw.rect(surface, RESISTOR_TAN, body_rect,
-                         border_radius=radius)
+        shadow = body_rect.move(2, 2)
+        pygame.draw.rect(surface, SHADOW_COLOR, shadow, border_radius=radius)
+        pygame.draw.rect(surface, RESISTOR_TAN, body_rect, border_radius=radius)
 
-        # Colour bands
         half_band = _RES_BAND_W // 2
         for i, band in enumerate(bands[:4]):
             rgb = band.get("rgb", (128, 128, 128))
@@ -490,11 +396,9 @@ class ScreenCalculator:
             if band_rect.width > 0 and band_rect.height > 0:
                 pygame.draw.rect(surface, rgb, band_rect)
 
-        # Re-draw body outline to crisp up rounded corners over bands
-        pygame.draw.rect(surface, RESISTOR_TAN, body_rect,
+        pygame.draw.rect(surface, BORDER_COLOR, body_rect,
                          width=2, border_radius=radius)
 
-        # Band name labels below the body
         for i, band in enumerate(bands[:4]):
             name = band.get("name", "")
             cx   = int(_RES_BODY_X + _RES_BAND_PCTS[i] * _RES_BODY_W)
@@ -502,15 +406,10 @@ class ScreenCalculator:
                        cx, _BAND_LABEL_Y, anchor="midtop")
 
     # ------------------------------------------------------------------
-    # Private: right panel drawing
+    # Right panel: keypad
     # ------------------------------------------------------------------
 
-    def _draw_right_panel(
-        self,
-        surface: pygame.Surface,
-        fnt: dict,
-    ) -> None:
-        """Draw the 3 × 5 on-screen keypad and rebuild ``self._keypad_rects``."""
+    def _draw_right_panel(self, surface, fnt):
         self._keypad_rects = []
 
         for row_idx, row in enumerate(_KEYPAD_LAYOUT):
@@ -519,30 +418,25 @@ class ScreenCalculator:
                 y = _KP_TOP  + row_idx * (_KP_BTN_H + _KP_GAP)
                 rect = pygame.Rect(x, y, _KP_BTN_W, _KP_BTN_H)
 
-                # Store for hit-testing
                 self._keypad_rects.append((label, rect))
 
-                # Style
                 bg_col, fg_col = _KEYPAD_STYLE.get(label, _KEYPAD_DEFAULT_STYLE)
 
-                # Visual feedback for currently pressed key
                 if self._pressed_key == label:
                     bg_col = tuple(max(0, int(c * 0.65)) for c in bg_col)
 
-                _draw_rounded_rect(surface, bg_col, rect, radius=6)
+                _draw_hard_shadow_rect(surface, rect, bg_col, radius=6)
                 _draw_text(surface, label, fnt["body"], fg_col,
                            rect.centerx, rect.centery, anchor="center")
 
     # ------------------------------------------------------------------
-    # Lifecycle hooks
+    # Lifecycle
     # ------------------------------------------------------------------
 
-    def on_enter(self) -> None:
-        """Called when this screen becomes active."""
+    def on_enter(self):
         pass
 
-    def on_exit(self) -> None:
-        """Called when this screen is deactivated."""
+    def on_exit(self):
         self._pressed_key = None
 
 
@@ -554,7 +448,6 @@ if __name__ == "__main__":
     import sys
     import os
 
-    # Ensure pi-app/ and shared/ are on the path when run directly.
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, _here)
     sys.path.insert(0, os.path.join(_here, "..", "shared"))

@@ -3,21 +3,10 @@ from __future__ import annotations
 """
 Resistor Station - Pygame Display Manager
 
-Manages pygame initialisation, screen transitions, the nav bar, and the main
-render loop for the MPI3508 480×320 HDMI touchscreen on Raspberry Pi 4.
+Manages pygame initialisation, screen transitions, the nav bar, status bar,
+and the main render loop for the MPI3508 480×320 HDMI touchscreen on Pi 4.
 
-The UIManager can be constructed in two modes:
-
-  1. Hardware mode (no surface argument):
-       mgr = UIManager()
-     pygame.init() is called, a 480×320 fullscreen display is created, and
-     the clock and fonts are set up.
-
-  2. Headless / test mode (surface provided):
-       mgr = UIManager(surface)
-     pygame is NOT re-initialised.  The supplied surface is used directly.
-     Clock and display-flip calls are skipped so the class works with a
-     MagicMock surface under SDL dummy mode.
+Brutalist light theme: cream background, hard shadows, black borders.
 """
 
 import math
@@ -30,35 +19,86 @@ import pygame
 
 SCREEN_W  = 480
 SCREEN_H  = 320
-NAV_H     = 48                  # nav bar height, pinned to bottom
-CONTENT_H = SCREEN_H - NAV_H   # 272 px available for screen content
+NAV_H     = 48
+STATUS_H  = 24
+CONTENT_Y = STATUS_H
+CONTENT_H = SCREEN_H - NAV_H - STATUS_H   # 248 px
 
-# Content and nav bar rects for convenience
-CONTENT_AREA = pygame.Rect(0, 0, SCREEN_W, CONTENT_H)
+CONTENT_AREA = pygame.Rect(0, CONTENT_Y, SCREEN_W, CONTENT_H)
 NAV_BAR_AREA = pygame.Rect(0, SCREEN_H - NAV_H, SCREEN_W, NAV_H)
+STATUS_AREA  = pygame.Rect(0, 0, SCREEN_W, STATUS_H)
 
 # ---------------------------------------------------------------------------
-# Colour palette
+# Colour palette — brutalist light theme
 # ---------------------------------------------------------------------------
 
-BG_COLOR    = (15,  23,  42)   # dark blue-gray — main background
-TEXT_COLOR  = (226, 232, 240)  # near-white — primary text
-ACCENT      = (56,  189, 248)  # cyan — voltage / active nav
-GREEN       = (52,  211, 153)  # current accent
-ORANGE      = (251, 146, 60)   # resistance accent
-YELLOW      = (251, 191, 36)   # warning / highlight
-RED         = (248, 113, 113)  # error / warning
-NAV_BG      = (8,   15,  30)   # nav bar background, darker than BG_COLOR
-NAV_BORDER  = (30,  41,  59)   # 1-px top border on the nav bar
-RESISTOR_TAN = (210, 180, 140)  # resistor body colour
+BG_COLOR       = (247, 245, 240)   # cream #F7F5F0
+TEXT_COLOR      = (24,  24,  27)    # zinc-900
+TEXT_MUTED      = (113, 113, 122)   # zinc-500
+CARD_BG         = (255, 255, 255)   # white cards
+NAV_BG          = (255, 255, 255)   # white nav
+NAV_BORDER      = (0,   0,   0)     # black border
+BORDER_COLOR    = (0,   0,   0)     # 2px black borders
+SHADOW_COLOR    = (0,   0,   0)     # hard shadow
+LCD_BG          = (18,  18,  18)    # LCD panel bg #121212
+LCD_GREEN       = (57,  255, 20)    # LCD text #39ff14
+SCREW_COLOR     = (161, 161, 170)   # zinc-400
+GRID_COLOR      = (235, 233, 228)   # subtle grid lines
+
+# Accent colours per electrical quantity
+VOLTAGE_COLOR   = (239, 68,  68)    # red-500
+CURRENT_COLOR   = (59,  130, 246)   # blue-500
+POWER_COLOR     = (16,  185, 129)   # emerald-500
+RESISTOR_TAN    = (232, 222, 194)   # #E8DEC2
+
+# Legacy aliases used by some screens
+ACCENT          = VOLTAGE_COLOR
+GREEN           = (34,  197, 94)    # green-500
+ORANGE          = CURRENT_COLOR     # current card is blue in ref
+YELLOW          = (251, 191, 36)
+RED             = (239, 68,  68)
 
 # ---------------------------------------------------------------------------
-# Nav bar configuration
+# Nav bar configuration — 4 screens
 # ---------------------------------------------------------------------------
 
-_NAV_LABELS = ["Live Lab", "Triangle", "Calculator"]
-_NAV_KEYS   = ["live_lab", "ohm_triangle", "calculator"]
-_NAV_BTN_W  = SCREEN_W // 3   # 160 px each
+_NAV_LABELS = ["Lab", "Triangle", "Calc", "Codes"]
+_NAV_KEYS   = ["live_lab", "ohm_triangle", "ohm_calc", "calculator"]
+_NAV_BTN_W  = SCREEN_W // 4   # 120 px each
+
+
+# ---------------------------------------------------------------------------
+# Drawing helpers (module-level, used by screens too)
+# ---------------------------------------------------------------------------
+
+def draw_hard_shadow_rect(surface, rect, color, radius=8, shadow_offset=2):
+    """Draw a rect with hard black shadow, fill, and black border."""
+    shadow = rect.move(shadow_offset, shadow_offset)
+    pygame.draw.rect(surface, SHADOW_COLOR, shadow, border_radius=radius)
+    pygame.draw.rect(surface, color, rect, border_radius=radius)
+    pygame.draw.rect(surface, BORDER_COLOR, rect, width=2, border_radius=radius)
+
+
+def draw_grid_background(surface, area):
+    """Draw subtle grid lines over the content area."""
+    for x in range(area.left, area.right, 20):
+        pygame.draw.line(surface, GRID_COLOR, (x, area.top), (x, area.bottom))
+    for y in range(area.top, area.bottom, 20):
+        pygame.draw.line(surface, GRID_COLOR, (area.left, y), (area.right, y))
+
+
+def draw_screws(surface, area):
+    """Draw 4 decorative screws at the corners of the given area."""
+    inset = 8
+    positions = [
+        (area.left + inset, area.top + inset),
+        (area.right - inset, area.top + inset),
+        (area.left + inset, area.bottom - inset),
+        (area.right - inset, area.bottom - inset),
+    ]
+    for pos in positions:
+        pygame.draw.circle(surface, SCREW_COLOR, pos, 3)
+        pygame.draw.circle(surface, BORDER_COLOR, pos, 3, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -68,37 +108,21 @@ _NAV_BTN_W  = SCREEN_W // 3   # 160 px each
 class UIManager:
     """Manages registered screens and dispatches events, updates, and draws.
 
-    Screens are registered by name and activated via switch_to() / switch_screen().
-    Only the active screen receives update() and draw() calls.  handle_event()
-    is also forwarded exclusively to the active screen.
-
     Construction:
-        UIManager()          – hardware mode: calls pygame.init(), creates
-                               480×320 fullscreen display.
-        UIManager(surface)   – test/headless mode: uses the provided surface,
-                               skips pygame init and display management.
-
-    Args:
-        surface: Optional pygame.Surface for headless / test mode.
+        UIManager()          – hardware mode
+        UIManager(surface)   – test/headless mode
     """
-
-    # ------------------------------------------------------------------
-    # Initialisation
-    # ------------------------------------------------------------------
 
     def __init__(self, surface=None) -> None:
         self._test_mode = surface is not None
 
         if self._test_mode:
-            # Headless path — use the supplied mock/real surface as-is.
-            # Initialise only the font subsystem (no display required).
             pygame.font.init()
             self._surface = surface
-            self.screen   = surface       # alias used by drawing helpers
+            self.screen   = surface
             self.clock    = None
             self._init_fonts_safe()
         else:
-            # Hardware path — full Pygame setup.
             pygame.init()
             _flags = pygame.FULLSCREEN | getattr(pygame, "SCALED", 0)
             self.screen = pygame.display.set_mode(
@@ -109,19 +133,10 @@ class UIManager:
             self.clock = pygame.time.Clock()
             self._init_fonts_safe()
 
-        # Screen registry
         self._screens: dict[str, object] = {}
         self._active: str | None = None
-
-        # Nav hit-rects are built lazily in draw_nav_bar(); initialise to []
-        # so _nav_hit() never crashes before the first draw.
         self._nav_rects: list[pygame.Rect] = []
-
-        # Track the currently pressed nav button for visual feedback.
         self._nav_pressed: int | None = None
-
-        # Expose primary screen keys as a public attribute for callers that
-        # want to enumerate the default navigation structure.
         self.current_screen: str = "live_lab"
 
     # ------------------------------------------------------------------
@@ -129,11 +144,10 @@ class UIManager:
     # ------------------------------------------------------------------
 
     def _init_fonts_safe(self) -> None:
-        """Load DejaVu Sans at each needed size, falling back to the default font."""
+        """Load fonts with fallback to defaults."""
         def _load(family: str, size: int, bold: bool = False) -> pygame.font.Font:
             try:
                 font = pygame.font.SysFont(family, size, bold=bold)
-                # SysFont can return None in dummy SDL environments
                 if font is None:
                     raise RuntimeError("SysFont returned None")
                 return font
@@ -144,33 +158,19 @@ class UIManager:
         self.heading_font = _load("dejavusans", 22, bold=True)
         self.body_font    = _load("dejavusans", 16)
         self.mono_font    = _load("dejavusansmono", 14)
+        self.small_font   = _load("dejavusans", 13)
+        self.tiny_font    = _load("dejavusansmono", 10)
 
     # ------------------------------------------------------------------
     # Screen registry
     # ------------------------------------------------------------------
 
     def register_screen(self, name: str, screen_obj) -> None:
-        """Add a screen to the registry under the given name.
-
-        Args:
-            name:       Unique string key (e.g. ``'live_lab'``).
-            screen_obj: Object implementing the Screen interface contract
-                        (update, draw, handle_event, optionally on_enter/on_exit).
-        """
         self._screens[name] = screen_obj
 
     def switch_to(self, name: str) -> None:
-        """Activate the named screen.
-
-        Args:
-            name: Key previously passed to register_screen().
-
-        Raises:
-            KeyError: If *name* has not been registered.
-        """
         if name not in self._screens:
             raise KeyError(f"Unknown screen: {name!r}")
-        # Call on_exit on the departing screen, if provided.
         if self._active is not None and self._active != name:
             old = self._screens[self._active]
             if hasattr(old, "on_exit"):
@@ -181,9 +181,7 @@ class UIManager:
         if hasattr(new, "on_enter"):
             new.on_enter()
 
-    # Alias to match the new public API name in the spec.
     def switch_screen(self, name: str) -> None:
-        """Alias for :meth:`switch_to`.  Both names are supported."""
         self.switch_to(name)
 
     # ------------------------------------------------------------------
@@ -191,24 +189,10 @@ class UIManager:
     # ------------------------------------------------------------------
 
     def handle_event(self, event) -> None:
-        """Forward a single pygame event to the active screen (if any).
-
-        This is the single-event dispatch path used by the test suite and by
-        callers that manage their own event loop.
-
-        Args:
-            event: A pygame event object.
-        """
         if self._active is not None:
             self._screens[self._active].handle_event(event)
 
     def handle_events(self) -> bool:
-        """Drain the pygame event queue, handle nav taps, and dispatch to the active screen.
-
-        Returns:
-            ``False`` if the application should quit (QUIT or Escape pressed),
-            ``True`` otherwise.
-        """
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
@@ -226,73 +210,81 @@ class UIManager:
         return True
 
     def update(self, dt: float) -> None:
-        """Advance the active screen by *dt* seconds.
-
-        Args:
-            dt: Elapsed time in seconds since the last frame.
-        """
         if self._active is not None:
             self._screens[self._active].update(dt)
 
     def draw(self) -> None:
-        """Render the active screen onto the surface, then overlay the nav bar."""
         if self._active is not None:
             active_screen = self._screens[self._active]
             active_screen.draw(self._surface)
 
         if not self._test_mode:
-            # Only draw nav bar and flip in hardware mode to avoid
-            # calling pygame.draw on a MagicMock surface.
+            self.draw_status_bar()
             self.draw_nav_bar()
             pygame.display.flip()
             if self.clock is not None:
                 self.clock.tick(30)
 
     # ------------------------------------------------------------------
+    # Status bar
+    # ------------------------------------------------------------------
+
+    def draw_status_bar(self) -> None:
+        """Draw slim status bar at top of screen."""
+        bar = STATUS_AREA
+        pygame.draw.rect(self._surface, CARD_BG, bar)
+        pygame.draw.line(self._surface, BORDER_COLOR,
+                         (0, STATUS_H - 1), (SCREEN_W, STATUS_H - 1), 1)
+
+        # Left: status dot + label
+        dot_x = 8
+        dot_y = STATUS_H // 2
+        pygame.draw.circle(self._surface, RED, (dot_x, dot_y), 4)
+        self.draw_text("SYSTEM ACTIVE", self.tiny_font, TEXT_COLOR,
+                       dot_x + 8, dot_y, anchor="midleft")
+
+        # Right: resolution label
+        self.draw_text("480x320_MODE", self.tiny_font, TEXT_MUTED,
+                       SCREEN_W - 6, dot_y, anchor="midright")
+
+    # ------------------------------------------------------------------
     # Nav bar
     # ------------------------------------------------------------------
 
     def draw_nav_bar(self) -> None:
-        """Draw the bottom nav bar with three screen-switching buttons.
-
-        Builds ``self._nav_rects`` so that ``_nav_hit()`` can do hit-testing.
-        """
+        """Draw bottom nav bar with 4 screen-switching buttons."""
         nav_y = SCREEN_H - NAV_H
 
-        # Top border
-        pygame.draw.line(
-            self._surface,
-            NAV_BORDER,
-            (0, nav_y),
-            (SCREEN_W - 1, nav_y),
-            1,
-        )
+        # White background
+        nav_rect = pygame.Rect(0, nav_y, SCREEN_W, NAV_H)
+        pygame.draw.rect(self._surface, NAV_BG, nav_rect)
 
-        # Build hit rects on first call (or refresh each frame — cheap)
+        # 2px black top border
+        pygame.draw.line(self._surface, NAV_BORDER,
+                         (0, nav_y), (SCREEN_W - 1, nav_y), 2)
+
         self._nav_rects = []
         for i, (label, key) in enumerate(zip(_NAV_LABELS, _NAV_KEYS)):
-            rect = pygame.Rect(i * _NAV_BTN_W, nav_y + 1, _NAV_BTN_W, NAV_H - 1)
+            rect = pygame.Rect(i * _NAV_BTN_W, nav_y + 2, _NAV_BTN_W, NAV_H - 2)
             self._nav_rects.append(rect)
 
             is_active = (key == self._active)
-            fill_color = ACCENT if is_active else NAV_BG
-            label_color = BG_COLOR if is_active else TEXT_COLOR
+            label_color = TEXT_COLOR if is_active else TEXT_MUTED
 
-            pygame.draw.rect(self._surface, fill_color, rect)
             self.draw_text(label, self.body_font, label_color,
-                           rect.centerx, rect.centery, anchor="center")
+                           rect.centerx, rect.centery - 4, anchor="center")
+
+            # Active indicator: 4px black rounded pill at bottom
+            if is_active:
+                pill_w = 32
+                pill_h = 4
+                pill_x = rect.centerx - pill_w // 2
+                pill_y = rect.bottom - pill_h - 4
+                pill_rect = pygame.Rect(pill_x, pill_y, pill_w, pill_h)
+                pygame.draw.rect(self._surface, BORDER_COLOR, pill_rect,
+                                 border_radius=2)
 
     def _nav_hit(self, pos) -> str | None:
-        """Test *pos* against nav bar rects.
-
-        If a registered screen is hit, ``switch_to()`` is called automatically.
-
-        Args:
-            pos: (x, y) tuple from a MOUSEBUTTONDOWN event.
-
-        Returns:
-            The screen key string if a nav button was hit, else ``None``.
-        """
         for rect, key in zip(self._nav_rects, _NAV_KEYS):
             if rect.collidepoint(pos):
                 if key in self._screens:
@@ -304,131 +296,48 @@ class UIManager:
     # Drawing helpers
     # ------------------------------------------------------------------
 
-    def draw_rounded_rect(
-        self,
-        surface: pygame.Surface,
-        rect: pygame.Rect,
-        color: tuple,
-        radius: int = 8,
-        width: int = 0,
-    ) -> None:
-        """Draw a filled or outlined rounded rectangle.
-
-        Args:
-            surface: Target surface.
-            rect:    Bounding rect.
-            color:   RGB colour tuple.
-            radius:  Corner radius in pixels (default 8).
-            width:   Line width; 0 = filled (default 0).
-        """
+    def draw_rounded_rect(self, surface, rect, color, radius=8, width=0):
         pygame.draw.rect(surface, color, rect, width=width, border_radius=radius)
 
-    def draw_text(
-        self,
-        text: str,
-        font: pygame.font.Font,
-        color: tuple,
-        x: int,
-        y: int,
-        anchor: str = "topleft",
-    ) -> pygame.Rect:
-        """Render *text* onto ``self.screen`` at the given anchor position.
-
-        Args:
-            text:   String to render.
-            font:   pygame.font.Font instance.
-            color:  RGB colour tuple.
-            x, y:   Pixel coordinates for the anchor point.
-            anchor: One of the pygame.Rect attributes (e.g. ``'topleft'``,
-                    ``'center'``, ``'midtop'``, ``'midleft'``).
-
-        Returns:
-            The blit rect of the rendered text.
-        """
+    def draw_text(self, text, font, color, x, y, anchor="topleft"):
         surf = font.render(text, True, color)
         rect = surf.get_rect()
         setattr(rect, anchor, (x, y))
         self.screen.blit(surf, rect)
         return rect
 
-    def draw_button(
-        self,
-        text: str,
-        rect: pygame.Rect,
-        color: tuple,
-        text_color: tuple,
-        pressed: bool = False,
-    ) -> pygame.Rect:
-        """Draw a rounded-rectangle button with centred label text.
-
-        Args:
-            text:       Button label.
-            rect:       Bounding rect for the button.
-            color:      Button fill colour.
-            text_color: Label colour.
-            pressed:    If ``True``, darken *color* by 25 % for a press effect.
-
-        Returns:
-            *rect* as a ``pygame.Rect``.
-        """
+    def draw_button(self, text, rect, color, text_color, pressed=False):
         if pressed:
             color = tuple(max(0, int(c * 0.75)) for c in color)
-        pygame.draw.rect(self._surface, color, rect, border_radius=8)
+        draw_hard_shadow_rect(self._surface, rect, color)
         self.draw_text(text, self.body_font, text_color,
                        rect.centerx, rect.centery, anchor="center")
         return pygame.Rect(rect)
 
-    def draw_resistor(
-        self,
-        surface: pygame.Surface,
-        x: int,
-        y: int,
-        w: int,
-        h: int,
-        bands: list[dict],
-    ) -> None:
-        """Draw a 4-band resistor illustration.
-
-        The resistor is drawn as a tan rounded-rectangle body with wire leads
-        extending from each end.  Four colour bands are rendered as vertical
-        stripes evenly spaced across the middle 70 % of the body width, with
-        their centres at 20 %, 40 %, 60 %, and 80 % of the body width.
-
-        Args:
-            surface: Target surface to draw onto.
-            x, y:    Top-left origin of the overall bounding box (includes leads).
-            w, h:    Width and height of the bounding box.
-            bands:   List of 4 band dicts from ``color_code.resistance_to_bands()``.
-                     Each dict has at least ``'rgb'`` (tuple) and ``'name'`` (str).
-        """
+    def draw_resistor(self, surface, x, y, w, h, bands):
+        """Draw a 4-band resistor illustration with brutalist style."""
         if not bands or len(bands) < 4:
             return
 
-        # --- geometry ---
         lead_w   = int(w * 0.15)
         body_x   = x + lead_w
         body_w   = int(w * 0.70)
         body_y   = y
-        cy       = y + h // 2   # vertical centre
+        cy       = y + h // 2
 
-        # Wire leads (thin horizontal lines at the vertical centre)
         lead_color = TEXT_COLOR
-        # Left lead
+        pygame.draw.line(surface, lead_color, (x, cy), (body_x, cy), 2)
         pygame.draw.line(surface, lead_color,
-                         (x,              cy),
-                         (body_x,         cy), 2)
-        # Right lead
-        pygame.draw.line(surface, lead_color,
-                         (body_x + body_w, cy),
-                         (x + w,           cy), 2)
+                         (body_x + body_w, cy), (x + w, cy), 2)
 
-        # Resistor body
         body_rect = pygame.Rect(body_x, body_y, body_w, h)
         radius = max(2, h // 3)
+
+        # Hard shadow + fill + border
+        shadow = body_rect.move(2, 2)
+        pygame.draw.rect(surface, SHADOW_COLOR, shadow, border_radius=radius)
         pygame.draw.rect(surface, RESISTOR_TAN, body_rect, border_radius=radius)
 
-        # --- colour bands ---
-        # 4 bands; centres at 20 %, 40 %, 60 %, 80 % of body_w from body_x.
         band_w      = max(2, int(w * 0.06))
         half_band   = band_w // 2
         centres_pct = [0.20, 0.40, 0.60, 0.80]
@@ -437,14 +346,11 @@ class UIManager:
             rgb = band.get("rgb", (128, 128, 128))
             centre_x = int(body_x + centres_pct[i] * body_w)
             bx = centre_x - half_band
-            # Clip band to body bounds
             bx = max(body_x, min(bx, body_x + body_w - band_w))
             band_rect = pygame.Rect(bx, body_y, band_w, h)
-            # Clip to body rect so bands don't overdraw the rounded corners
             band_rect = band_rect.clip(body_rect)
             if band_rect.width > 0 and band_rect.height > 0:
                 pygame.draw.rect(surface, rgb, band_rect)
 
-        # Re-draw the body outline to crisp up the rounded corners over bands
-        pygame.draw.rect(surface, RESISTOR_TAN, body_rect,
+        pygame.draw.rect(surface, BORDER_COLOR, body_rect,
                          width=2, border_radius=radius)

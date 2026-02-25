@@ -31,6 +31,7 @@ from serial_comms import PortalSerial
 from ui_manager import UIManager
 from screen_live_lab import ScreenLiveLab
 from screen_ohm_triangle import ScreenOhmTriangle
+from screen_ohm_calc import ScreenOhmCalc
 from screen_calculator import ScreenCalculator
 
 logging.basicConfig(
@@ -86,10 +87,12 @@ def main() -> None:
 
     live_lab   = ScreenLiveLab(mgr)
     triangle   = ScreenOhmTriangle(mgr.screen)
+    ohm_calc   = ScreenOhmCalc(mgr.screen)
     calculator = ScreenCalculator(mgr.screen)
 
     mgr.register_screen("live_lab",     live_lab)
     mgr.register_screen("ohm_triangle", triangle)
+    mgr.register_screen("ohm_calc",     ohm_calc)
     mgr.register_screen("calculator",   calculator)
 
     mgr.switch_to("live_lab")
@@ -148,6 +151,8 @@ def main() -> None:
                 )
             elif mgr.current_screen == "ohm_triangle":
                 triangle.update(dt, measurement=last_result)
+            elif mgr.current_screen == "ohm_calc":
+                ohm_calc.update(dt, measurement=last_result)
             else:
                 mgr.update(dt)
 
