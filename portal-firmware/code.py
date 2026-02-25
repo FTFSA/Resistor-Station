@@ -80,8 +80,7 @@ _state          = _STATE_IDLE
 _last_packet_t  = 0.0   # time.monotonic() of the last valid packet
 _btn_up_last    = 0.0   # last accepted up-button press time
 _btn_down_last  = 0.0   # last accepted down-button press time
-_strip_is_off   = True  # tracks whether strip.off() has already been called
-                        # so we avoid calling it every idle frame
+_strip_is_off   = True  # tracks whether strip needs transition cleanup
 
 # ---------------------------------------------------------------------------
 # Button handling helpers (non-blocking, debounced)
@@ -166,10 +165,6 @@ while True:
             strip.update()
 
     else:
-        # IDLE state
+        # IDLE state — show static circuit on matrix, dim dot on strip
         anim.idle_animation()
-
-        # Only call strip.off() on the first idle frame, not every iteration
-        if not _strip_is_off:
-            strip.off()
-            _strip_is_off = True
+        strip.idle_update()

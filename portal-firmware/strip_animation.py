@@ -111,6 +111,20 @@ class StripAnimation:
 
         strip.show()
 
+    def idle_update(self):
+        """Single dim blue dot drifts along the strip; call in idle state."""
+        if self._strip is None:
+            return
+        strip = self._strip
+        num = self._num_pixels
+        self._phase = (self._phase + 1) % num
+        for px in range(num):
+            if px == self._phase:
+                strip[px] = (0, 0, 40)
+            else:
+                strip[px] = (0, 0, 0)
+        strip.show()
+
     def off(self):
         """Fill strip with black, push immediately, and reset phase."""
         if self._strip is None:

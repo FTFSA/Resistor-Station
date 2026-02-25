@@ -226,22 +226,32 @@ class CurrentAnimation:
         _dsp.refresh(minimum_frames_per_second=0)
 
     def idle_animation(self):
-        """Single dim dot drifts along the wire; call once per main-loop tick."""
+        """Draw the static circuit with a single dim electron drifting along the wire.
+
+        Shows wires, resistor body, leads, and polarity markers so the
+        circuit is always visible on the matrix.  A lone electron dot
+        drifts slowly to hint at readiness.
+        """
         now = time.monotonic()
         if now - self._idle_last < 0.08:
             return
         self._idle_last = now
 
-        # Erase previous dot
-        py = (WIRE_Y1 + WIRE_Y2) // 2
-        _sp(self._idle_x, py, 0)
+        # Full redraw: black out, then draw the static circuit with no
+        # current and no heat so the resistor body stays cool.
+        _bmp.fill(0)
+        self._draw_static(self._tick, 0, 0)
+        self._tick += 1
 
+        # Single dim electron drifts along the wire
         self._idle_x = (self._idle_x + 1) % WIDTH
-        # Skip over resistor body
         if RES_X1 <= self._idle_x <= RES_X2:
             self._idle_x = RES_X2 + 1
 
-        _sp(self._idle_x, py, 36)   # wire base colour — subtle glow
+        py = (WIRE_Y1 + WIRE_Y2) // 2
+        _sp(self._idle_x, py, 41)       # cool blue electron dot
+        _sp(self._idle_x - 1, py, 38)   # dim trail
+
         _dsp.refresh(minimum_frames_per_second=0)
 
     def stop(self):
