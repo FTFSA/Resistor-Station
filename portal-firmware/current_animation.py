@@ -52,14 +52,14 @@ HEIGHT = 32
 # Resistor geometry
 RES_X1 = 20   # resistor body left  (inclusive)
 RES_X2 = 43   # resistor body right (inclusive)
-RES_Y1 = 4    # resistor body top    (4px margin from edge)
-RES_Y2 = 27   # resistor body bottom (4px margin from edge)
-WIRE_Y1 = 13  # wire top row
-WIRE_Y2 = 18  # wire bottom row
+RES_Y1 = 10   # resistor body top
+RES_Y2 = 21   # resistor body bottom
+WIRE_Y1 = 14  # wire top row
+WIRE_Y2 = 17  # wire bottom row
 
-# Reduced counts for SAMD51 memory budget
-NUM_ELECTRONS     = 20
-MAX_HEAT_PARTICLES = 12
+# Electron and particle counts
+NUM_ELECTRONS     = 30
+MAX_HEAT_PARTICLES = 20
 TRAIL_LENGTH       = 2
 
 # V_IN used when set_current() (not set_params()) is the caller
@@ -272,27 +272,12 @@ class CurrentAnimation:
                 else:
                     if heat_intensity > 0.1:
                         # Flicker: deterministic per pixel per tick — no allocation
-                        flicker_up = ((tick + x * 3 + y * 7) % 11) > 5
-                        # heat scaled 0..100
-                        h100 = int(heat_intensity * 100)
-                        if flicker_up:
-                            h100 = min(100, h100 + 15)
-                        else:
-                            h100 = max(0, h100 - 15)
-                        # Map to palette 21..30
-                        if h100 < 20:
-                            idx = 21
-                        elif h100 < 40:
-                            idx = 22
-                        elif h100 < 60:
-                            idx = 26
-                        elif h100 < 75:
-                            idx = 27
-                        elif h100 < 88:
-                            idx = 28
-                        else:
-                            idx = 29
-                        _bmp[x, y] = idx
+                        flicker = 0.85 + (0.15 if ((tick + x * 3 + y * 7) % 11) > 5 else -0.15)
+                        h = heat_intensity * flicker
+                        idx = 21 + min(4, int(h * 5))
+                        if idx >= 26:
+                            idx = 26 + min(4, int((h - 0.8) * 8))
+                        _bmp[x, y] = max(21, min(30, idx))
                     else:
                         _bmp[x, y] = 21
 
