@@ -47,6 +47,7 @@ class PortalSerial:
         port: str = "/dev/ttyACM0",
         baud: int = 115200,
         timeout: float = 1.0,
+        write_timeout: float = 0.05,
     ) -> None:
         """Open the serial port.
 
@@ -60,11 +61,14 @@ class PortalSerial:
             timeout: Read timeout in seconds passed to serial.Serial.  Write
                      operations are effectively non-blocking for small packets,
                      but this is kept for consistency.
+            write_timeout: Max seconds a write() call may block before raising
+                     SerialTimeoutException. Keeps the UI loop responsive.
         """
         self._port = port
         self._configured_port = port
         self._baud = baud
         self._timeout = timeout
+        self._write_timeout = write_timeout
 
         # Timestamp of the last reconnect *attempt* — used for cooldown.
         self._last_reconnect_attempt: float = 0.0
@@ -139,6 +143,7 @@ class PortalSerial:
                     candidate_port,
                     self._baud,
                     timeout=self._timeout,
+                    write_timeout=self._write_timeout,
                 )
                 self._port = candidate_port
                 log.info("Opened serial port %s at %d baud", self._port, self._baud)
@@ -200,7 +205,7 @@ class PortalSerial:
             self._ser.write(packet.encode("utf-8"))
             log.debug("Sent: %r", packet.rstrip())
             return True
-        except serial.SerialException as exc:
+        except (serial.SerialException, serial.SerialTimeoutException) as exc:
             log.warning("Write failed on %s: %s", self._port, exc)
             self._ser = None
             # Schedule a reconnect on the next send attempt (do not block
