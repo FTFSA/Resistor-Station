@@ -406,7 +406,7 @@ if __name__ == "__main__":
     live_lab._meter    = None
     live_lab._serial   = None
     live_lab.measurement = {
-        "voltage":    5.000,
+        "voltage":    1.599,
         "current":    0.000702,
         "resistance": 4700.0,
         "value_string": "4.7k\u03a9",

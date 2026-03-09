@@ -57,7 +57,6 @@ def main() -> None:
             port=config.ARDUINO_PORT,
             baud=config.ARDUINO_BAUD,
             r_known=config.R_KNOWN,
-            v_in=config.V_IN,
         )
         log.info("Arduino connected on %s", config.ARDUINO_PORT)
     except Exception as exc:

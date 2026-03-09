@@ -3,22 +3,24 @@ from __future__ import annotations
 """
 Resistor Station - Arduino Serial Measurement
 
-Reads voltage from an Arduino connected via USB serial. The Arduino performs
-the ADC reading and sends the midpoint voltage over serial as:
+Reads an ADC ratio from an Arduino connected via USB serial. The Arduino
+performs the ADC reading and sends the ratio (0.0–1.0) over serial as:
 
-    V:<voltage>\n
+    A:<ratio>\n
 
 Example:
-    V:1.652\n
+    A:0.0909\n
 
+The ratio equals Vmid/VCC, which is independent of the actual supply voltage.
 The Pi computes the unknown resistance from the voltage-divider formula:
 
-    5V → R_known (10kΩ) → [midpoint] → R_unknown → GND
-    R_unknown = R_known × Vmid / (Vin - Vmid)
+    VCC → R_known (10kΩ) → [midpoint] → R_unknown → GND
+    ratio = R_unknown / (R_known + R_unknown)
+    R_unknown = R_known × ratio / (1 - ratio)
 
 Hardware:
-    - Arduino (Uno/Nano/etc.) connected via USB → /dev/ttyUSB0 or /dev/ttyACM*
-    - Arduino reads ADC and sends voltage lines at 115200 baud
+    - Arduino Uno connected via USB → /dev/ttyUSB0 or /dev/ttyACM*
+    - Arduino reads ADC and sends ratio lines at 115200 baud
 
 Dependencies:
     pyserial
@@ -37,10 +39,9 @@ log = logging.getLogger(__name__)
 # Module-level constants
 # ---------------------------------------------------------------------------
 
-VREF: float = 5.0          # Supply / reference voltage (volts) — Arduino Uno
 R_KNOWN: float = 10_000.0  # Known series resistor (ohms)
-SHORT_THRESHOLD: float = 0.03   # Voltages below this → short circuit
-OPEN_THRESHOLD: float = 4.90    # Voltages above this → open circuit
+SHORT_THRESHOLD: float = 0.006  # Ratios below this → short circuit
+OPEN_THRESHOLD: float = 0.98   # Ratios above this → open circuit
 
 # E24 series base mantissas (one decade, 1.0 – 9.1)
 _E24_BASE = [
@@ -94,17 +95,16 @@ def snap_to_e24(ohms: float) -> float:
 # ---------------------------------------------------------------------------
 
 class ResistanceMeter:
-    """Measures an unknown resistance by reading voltage from an Arduino over USB serial.
+    """Measures an unknown resistance by reading ADC ratio from an Arduino over USB serial.
 
-    The Arduino reads its ADC and sends lines in the format ``V:<voltage>\\n``.
-    This class opens the serial port, reads the latest voltage, and computes
-    resistance using the voltage-divider formula.
+    The Arduino reads its ADC and sends lines in the format ``A:<ratio>\\n``
+    where ratio is ADC_value / 1023 (0.0 to 1.0). This equals Vmid/VCC,
+    making the measurement independent of the actual supply voltage.
 
     Args:
         port:    Serial device path for the Arduino (e.g. '/dev/ttyUSB0').
         baud:    Baud rate (must match Arduino sketch, default 115200).
         r_known: Reference resistor value in ohms (default 10000.0).
-        v_in:    Supply voltage in volts (default 5.0).
     """
 
     def __init__(
@@ -112,15 +112,13 @@ class ResistanceMeter:
         port: str = "/dev/ttyUSB0",
         baud: int = 115200,
         r_known: float = R_KNOWN,
-        v_in: float = VREF,
     ) -> None:
         self.r_known = r_known
-        self.v_in = v_in
         self._port = port
         self._baud = baud
 
         self._ser: Optional[serial.Serial] = None
-        self._last_voltage: Optional[float] = None
+        self._last_ratio: Optional[float] = None
 
         self._open_port()
 
@@ -145,43 +143,42 @@ class ResistanceMeter:
     # Public interface
     # ------------------------------------------------------------------
 
-    def read_voltage(self) -> Optional[float]:
-        """Read the latest voltage value from the Arduino.
+    def read_ratio(self) -> Optional[float]:
+        """Read the latest ADC ratio from the Arduino.
 
         Drains all available lines from the serial buffer and returns the
-        most recent valid ``V:<float>`` value. This ensures we always use
+        most recent valid ``A:<float>`` value. This ensures we always use
         the freshest reading without blocking.
 
         Returns:
-            Voltage as a float, or None if no valid reading is available.
+            ADC ratio (0.0–1.0) as a float, or None if no valid reading.
         """
         if self._ser is None or not self._ser.is_open:
             return None
 
         latest = None
         try:
-            # Read all available lines, keep the last valid one
             while self._ser.in_waiting:
                 line = self._ser.readline().decode("utf-8", errors="ignore").strip()
-                if line.startswith("V:"):
+                if line.startswith("A:"):
                     try:
                         latest = float(line[2:])
                     except ValueError:
                         pass
         except (serial.SerialException, OSError) as exc:
             log.warning("Arduino read error: %s", exc)
-            return self._last_voltage
+            return self._last_ratio
 
         if latest is not None:
-            self._last_voltage = latest
+            self._last_ratio = latest
 
-        return self._last_voltage
+        return self._last_ratio
 
     def measure(self) -> dict | None:
         """Measure the unknown resistance and return a result dictionary.
 
-        Reads the latest voltage from the Arduino, applies the voltage-divider
-        formula, and snaps to the nearest E24 standard value.
+        Reads the latest ADC ratio from the Arduino and computes resistance:
+            R_unknown = R_known × ratio / (1 - ratio)
 
         Returns:
             dict with keys:
@@ -189,47 +186,50 @@ class ResistanceMeter:
                 'resistance'         – raw calculated resistance (float, ohms)
                 'standard_resistance'– nearest E24 value (float, ohms)
                 'current'            – circuit current (float, amps)
-                'voltage'            – measured midpoint voltage (float, volts)
+                'ratio'              – ADC ratio Vmid/VCC (float, 0–1)
                 'value_string'       – human-readable label e.g. '4.7kΩ'
             Returns only {'status': 'short'} or {'status': 'open'} for those
             conditions.  Returns None if no reading is available.
         """
-        v = self.read_voltage()
-        if v is None:
+        ratio = self.read_ratio()
+        if ratio is None:
             return None
 
-        if v < SHORT_THRESHOLD:
+        if ratio < SHORT_THRESHOLD:
             return {"status": "short"}
 
-        if v > OPEN_THRESHOLD:
+        if ratio > OPEN_THRESHOLD:
             return {"status": "open"}
 
-        denom = self.v_in - v
+        denom = 1.0 - ratio
         if denom <= 0:
             return {"status": "open"}
 
-        r_unknown = self.r_known * v / denom
+        r_unknown = self.r_known * ratio / denom
         standard = self.snap_to_e24(r_unknown)
-        current = self.v_in / (self.r_known + r_unknown)
+        # Estimate voltage/current using nominal 5V for UI display
+        voltage = 5.0 * ratio
+        current = 5.0 / (self.r_known + r_unknown)
 
         return {
             "status": "present",
             "resistance": r_unknown,
             "standard_resistance": standard,
             "current": current,
-            "voltage": v,
+            "voltage": voltage,
+            "ratio": ratio,
             "value_string": self.format_value(standard),
         }
 
     def is_present(self) -> bool:
         """Return True if a resistor appears to be inserted.
 
-        Uses the most recent cached voltage for speed (no serial read).
+        Uses the most recent cached ratio for speed (no serial read).
         """
-        v = self._last_voltage
-        if v is None:
+        r = self._last_ratio
+        if r is None:
             return False
-        return SHORT_THRESHOLD < v < OPEN_THRESHOLD
+        return SHORT_THRESHOLD < r < OPEN_THRESHOLD
 
     def snap_to_e24(self, ohms: float) -> float:
         """Return the nearest E24 standard value for *ohms*."""
