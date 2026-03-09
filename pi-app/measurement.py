@@ -13,7 +13,7 @@ Example:
 
 The Pi computes the unknown resistance from the voltage-divider formula:
 
-    3.3V → R_known (10kΩ) → [midpoint] → R_unknown → GND
+    5V → R_known (10kΩ) → [midpoint] → R_unknown → GND
     R_unknown = R_known × Vmid / (Vin - Vmid)
 
 Hardware:
@@ -37,10 +37,10 @@ log = logging.getLogger(__name__)
 # Module-level constants
 # ---------------------------------------------------------------------------
 
-VREF: float = 3.3          # Supply / reference voltage (volts)
+VREF: float = 5.0          # Supply / reference voltage (volts) — Arduino Uno
 R_KNOWN: float = 10_000.0  # Known series resistor (ohms)
 SHORT_THRESHOLD: float = 0.03   # Voltages below this → short circuit
-OPEN_THRESHOLD: float = 3.20    # Voltages above this → open circuit
+OPEN_THRESHOLD: float = 4.90    # Voltages above this → open circuit
 
 # E24 series base mantissas (one decade, 1.0 – 9.1)
 _E24_BASE = [
@@ -104,7 +104,7 @@ class ResistanceMeter:
         port:    Serial device path for the Arduino (e.g. '/dev/ttyUSB0').
         baud:    Baud rate (must match Arduino sketch, default 115200).
         r_known: Reference resistor value in ohms (default 10000.0).
-        v_in:    Supply voltage in volts (default 3.3).
+        v_in:    Supply voltage in volts (default 5.0).
     """
 
     def __init__(

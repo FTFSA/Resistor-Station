@@ -166,7 +166,7 @@ class ScreenOhmTriangle:
             pygame.font.init()
 
         self.selected    : str   = "R"
-        self.voltage     : float = 3.3
+        self.voltage     : float = 5.0
         self.current     : float = 0.001
         self.resistance  : float = 3300.0
         self.slider_value: float = 0.5

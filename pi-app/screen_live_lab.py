@@ -301,7 +301,7 @@ class ScreenLiveLab:
                        anchor="center")
 
             tol_band = self.bands[3] if len(self.bands) >= 4 else {}
-            tol_val  = tol_band.get("tolerance", 0.05)
+            tol_val  = tol_band.get("tolerance", 0.01)
             tol_pct  = int(round(tol_val * 100))
             _draw_text(surface, f"DETECTED \u00b1{tol_pct}%", fonts["tiny"],
                        TEXT_MUTED, card_rect.centerx, card_rect.centery + 12,
@@ -406,7 +406,7 @@ if __name__ == "__main__":
     live_lab._meter    = None
     live_lab._serial   = None
     live_lab.measurement = {
-        "voltage":    3.300,
+        "voltage":    5.000,
         "current":    0.000702,
         "resistance": 4700.0,
         "value_string": "4.7k\u03a9",

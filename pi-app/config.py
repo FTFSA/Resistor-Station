@@ -16,4 +16,4 @@ SCREEN_H = 320
 
 # Voltage divider circuit
 R_KNOWN = 10000.0   # Known resistor in voltage divider (ohms)
-V_IN    = 3.3       # Supply voltage (volts)
+V_IN    = 5.0       # Supply voltage (volts) — Arduino Uno 5V

@@ -33,8 +33,10 @@ BAND_COLORS: dict[int, dict] = {
     9: {"name": "White",  "rgb": (255, 255, 255)},
 }
 
-# Tolerance band colors (key == tolerance as a fraction, e.g. 0.05 = 5 %).
+# Tolerance band colors (key == tolerance as a fraction, e.g. 0.01 = 1 %).
 TOLERANCE_BANDS: dict[float, dict] = {
+    0.01: {"name": "Brown",  "rgb": (139, 69,  19 )},
+    0.02: {"name": "Red",    "rgb": (255, 0,   0  )},
     0.05: {"name": "Gold",   "rgb": (255, 215, 0  )},
     0.10: {"name": "Silver", "rgb": (192, 192, 192)},
 }
@@ -105,7 +107,7 @@ def snap_to_e24(ohms: float) -> float:
     return best_value
 
 
-def resistance_to_bands(ohms: float, tolerance: float = 0.05) -> list[dict]:
+def resistance_to_bands(ohms: float, tolerance: float = 0.01) -> list[dict]:
     """Convert *ohms* to a list of 4 band dicts (digit, name, rgb / tolerance).
 
     Snaps to the nearest E24 value first, so digit values are always clean.
@@ -114,7 +116,7 @@ def resistance_to_bands(ohms: float, tolerance: float = 0.05) -> list[dict]:
         [0] First significant digit
         [1] Second significant digit
         [2] Multiplier  (number of trailing zeros, 0–8)
-        [3] Tolerance   (Gold = 5 %, Silver = 10 %)
+        [3] Tolerance   (Brown = 1 %, Gold = 5 %, Silver = 10 %)
 
     Each of bands 0–2 is:  {'digit': int, 'name': str, 'rgb': tuple}
     Band 3 is:             {'name': str, 'rgb': tuple, 'tolerance': float}
@@ -148,7 +150,7 @@ def resistance_to_bands(ohms: float, tolerance: float = 0.05) -> list[dict]:
     multiplier = max(0, min(8, multiplier))  # valid range for a 4-band code
 
     # --- tolerance ----------------------------------------------------------
-    tol_info = TOLERANCE_BANDS.get(tolerance, TOLERANCE_BANDS[0.05])
+    tol_info = TOLERANCE_BANDS.get(tolerance, TOLERANCE_BANDS[0.01])
 
     # --- assemble bands -----------------------------------------------------
     def _digit_band(digit: int) -> dict:
@@ -167,7 +169,7 @@ def resistance_to_bands(ohms: float, tolerance: float = 0.05) -> list[dict]:
     band_tolerance: dict = {
         "name":      tol_info["name"],
         "rgb":       tol_info["rgb"],
-        "tolerance": tolerance if tolerance in TOLERANCE_BANDS else 0.05,
+        "tolerance": tolerance if tolerance in TOLERANCE_BANDS else 0.01,
     }
 
     return [
@@ -205,13 +207,13 @@ def bands_to_description(bands: list[dict]) -> str:
 
 if __name__ == "__main__":
     cases = [
-        (4700,   "Yellow-Violet-Red-Gold"),
-        (330,    "Orange-Orange-Brown-Gold"),
-        (10000,  "Brown-Black-Orange-Gold"),
-        (100,    "Brown-Black-Brown-Gold"),
-        (510000, "Green-Brown-Yellow-Gold"),    # was failing: float truncation
-        (820000, "Gray-Red-Yellow-Gold"),       # was failing: float truncation
-        (8200000,"Gray-Red-Green-Gold"),        # was failing: float truncation
+        (4700,   "Yellow-Violet-Red-Brown"),
+        (330,    "Orange-Orange-Brown-Brown"),
+        (10000,  "Brown-Black-Orange-Brown"),
+        (100,    "Brown-Black-Brown-Brown"),
+        (510000, "Green-Brown-Yellow-Brown"),
+        (820000, "Gray-Red-Yellow-Brown"),
+        (8200000,"Gray-Red-Green-Brown"),
     ]
 
     all_pass = True
@@ -227,7 +229,7 @@ if __name__ == "__main__":
 
     # Extra verification cases
     extra = [
-        (1_000_000, "Brown-Black-Green-Gold"),
+        (1_000_000, "Brown-Black-Green-Brown"),
     ]
     for ohms, expected_bands in extra:
         bands = resistance_to_bands(ohms)
