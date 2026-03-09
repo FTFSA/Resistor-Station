@@ -1,4 +1,2 @@
 pygame
-adafruit-circuitpython-ads1x15
 pyserial
-adafruit-blinka

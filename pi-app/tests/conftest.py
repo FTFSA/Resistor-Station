@@ -1,7 +1,7 @@
 """
 pytest configuration for pi-app UI tests.
 - Runs pygame in headless/dummy mode (no physical display required).
-- Stubs out hardware modules unavailable on a dev machine (ADS1115, blinka, serial).
+- Stubs out hardware modules unavailable on a dev machine (serial port).
 - Adds pi-app/ and shared/ to sys.path.
 """
 import os
@@ -19,12 +19,6 @@ sys.path.insert(0, os.path.join(_tests_dir, "..", "..", "shared"))  # shared/
 
 # Stub hardware modules that are unavailable outside the Pi
 _HARDWARE_STUBS = [
-    "board",
-    "busio",
-    "adafruit_blinka",
-    "adafruit_ads1x15",
-    "adafruit_ads1x15.ads1115",
-    "adafruit_ads1x15.analog_in",
     "serial",
 ]
 for _mod in _HARDWARE_STUBS:

@@ -2,8 +2,9 @@
 Resistor Station - Pi App Configuration
 """
 
-# I2C / ADC
-I2C_ADDRESS_ADS = 0x48
+# Arduino serial (measurement ADC)
+ARDUINO_PORT = '/dev/ttyUSB0'
+ARDUINO_BAUD = 115200
 
 # Serial connection to Portal M4
 SERIAL_PORT = '/dev/ttyACM0'

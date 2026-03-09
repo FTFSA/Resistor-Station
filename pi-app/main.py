@@ -1,10 +1,10 @@
 """
 Resistor Station - Raspberry Pi 4 Main Entry Point
 
-Initialises hardware (ADS1115, serial to Portal M4), builds the Pygame UI,
-and runs the main event loop.
+Initialises hardware (Arduino measurement, serial to Portal M4), builds the
+Pygame UI, and runs the main event loop.
 
-Hardware failures (ADS1115 not found, Portal not connected) are caught and
+Hardware failures (Arduino not found, Portal not connected) are caught and
 logged; the app continues in a degraded state so the UI is still usable.
 
 Measurement flow
@@ -42,7 +42,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 # How often to take a resistance measurement (seconds).
-# 32-sample trimmed-mean read takes ~50 ms; 200 ms gives comfortable headroom.
+# Arduino sends voltage readings continuously; we poll at this interval.
 MEASURE_INTERVAL = 0.2
 
 
@@ -54,13 +54,14 @@ def main() -> None:
     meter = None
     try:
         meter = ResistanceMeter(
-            i2c_address=config.I2C_ADDRESS_ADS,
+            port=config.ARDUINO_PORT,
+            baud=config.ARDUINO_BAUD,
             r_known=config.R_KNOWN,
             v_in=config.V_IN,
         )
-        log.info("ADS1115 initialised at I2C address 0x%02X", config.I2C_ADDRESS_ADS)
+        log.info("Arduino connected on %s", config.ARDUINO_PORT)
     except Exception as exc:
-        log.warning("ADS1115 not available (%s) — running without live measurement", exc)
+        log.warning("Arduino not available (%s) — running without live measurement", exc)
 
     serial = PortalSerial(port=config.SERIAL_PORT, baud=config.SERIAL_BAUD)
     if serial.is_connected():
@@ -160,8 +161,10 @@ def main() -> None:
             mgr.draw()
 
     finally:
+        if meter is not None:
+            meter.close()
         serial.close()
-        log.info("Serial port closed")
+        log.info("Serial ports closed")
         import pygame
         pygame.quit()
         log.info("Pygame quit")
