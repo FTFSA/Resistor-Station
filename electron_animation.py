@@ -2,6 +2,7 @@
 """Electron flow animation — particles drift through a wire, heat up
 inside a glowing resistor-shaped zone, then disperse outward and fade."""
 
+import os
 import sys
 import math
 import random
@@ -174,10 +175,35 @@ def draw_circuit(surface, layout, particles, frame):
 
 # ── main ─────────────────────────────────────────────────────────────
 def main():
+    # Place window on second monitor if available (pass --display 1 to select)
+    display_index = 0
+    if "--display" in sys.argv:
+        idx = sys.argv.index("--display")
+        if idx + 1 < len(sys.argv):
+            display_index = int(sys.argv[idx + 1])
+
     pygame.init()
 
-    info = pygame.display.Info()
-    width, height = info.current_w, info.current_h
+    num_displays = pygame.display.get_num_displays() if hasattr(pygame.display, "get_num_displays") else 1
+    if display_index > 0 and num_displays > 1:
+        # SDL2: position window on the chosen display
+        os.environ["SDL_VIDEO_FULLSCREEN_DISPLAY"] = str(display_index)
+        rect = pygame.display.get_desktop_sizes()[display_index]
+        width, height = rect
+        os.environ["SDL_VIDEO_WINDOW_POS"] = f"{0},{0}"
+    else:
+        # Fallback: try using desktop sizes or display info
+        try:
+            sizes = pygame.display.get_desktop_sizes()
+            if display_index < len(sizes):
+                width, height = sizes[display_index]
+            else:
+                info = pygame.display.Info()
+                width, height = info.current_w, info.current_h
+        except AttributeError:
+            info = pygame.display.Info()
+            width, height = info.current_w, info.current_h
+
     screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
     pygame.display.set_caption("Electron Flow")
 
